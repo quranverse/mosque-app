@@ -21,35 +21,120 @@ When a user opens the app for the first time, they will see:
 ## 🏛️ Mosque Account System
 
 ### Mosque Registration Flow
-When user selects "Create Mosque Account":
+When user selects "Create Mosque Account", they will go through a smooth step-by-step registration process:
 
-#### Registration Form Fields:
-- **Email Address** (required) - For mosque administration
-- **Mosque Name** (required)
-- **Mosque Address** (required)
-- **Phone Number** (optional)
-- **Website** (optional)
-- **Password** (required) - Secure authentication
-- **Confirm Password** (required)
+## 📝 Step-by-Step Registration Process
 
-#### Photo Upload System:
-- **Exterior Photo** (required) - Outside view of the mosque
-- **Interior Photo** (required) - Inside view of the mosque
-- **Additional Photos** (optional) - Up to 5 more photos
+### **Step 1: Account Setup**
+- **Email Address** (required) - For mosque administration and login
+- **Password** (required) - Secure authentication (minimum 8 characters)
+- **Confirm Password** (required) - Password verification
+- **Language Preference** (required) - Choose interface language:
+  - Arabic
+  - English
+  - French
+  - Urdu
+  - Turkish
+  - Other languages as needed
 
-#### Mosque Information:
-- **Prayer Time Method** - Calculation method preference
-- **Madhab** - Hanafi or Shafi
-- **Services Offered** - Checkboxes for:
-  - Live Translation
-  - Friday Speeches
-  - Educational Programs
-  - Community Events
-  - Youth Programs
-  - Women's Programs
-- **Languages Supported** - For translation services
-- **Capacity** - Number of worshippers
-- **Facilities** - Parking, Wheelchair Access, etc.
+### **Step 2: Mosque Basic Information**
+- **Mosque Name** (required) - Official name of the mosque
+- **Address** (required) - Street address
+- **City** (required) - City name
+- **Zip Code** (required) - Postal code
+- **Country** (required) - Country selection dropdown
+- **Website** (optional) - Mosque website URL
+
+### **Step 3: Mosque Facilities & Services**
+Toggle switches (ON/OFF) for available facilities:
+
+#### **Worship Facilities:**
+- **Space for women** - Dedicated women's prayer area
+- **Ablutions room** - Wudu/ablution facilities
+- **Salât al-Janaza** - Funeral prayer services
+- **Salat El Eid** - Eid prayer celebrations
+- **Ramadan iftar** - Iftar meals during Ramadan
+
+#### **Educational Services:**
+- **Adult courses** - Islamic education for adults
+- **Children courses** - Islamic education for children
+- **Library** - Islamic library and resources
+- **Quran for blind people** - Braille Quran and audio services
+
+#### **Accessibility & Parking:**
+- **Disabled accessibility** - Wheelchair accessible facilities
+- **Parking** - Car parking availability
+- **Bike parking** - Bicycle parking facilities
+- **Electric car charging** - EV charging stations
+
+### **Step 4: Mosque Details & History**
+- **Construction Year** (required) - Year mosque was built (YYYY format)
+- **Capacity (Women)** (required) - Maximum capacity for women's prayer area
+- **Capacity (Men)** (required) - Maximum capacity for men's prayer area
+- **Brief History** (optional) - Short summary of mosque history (200 characters maximum)
+- **Other Information** (optional) - Additional relevant information
+
+### **Step 5: Photo Upload**
+High-quality photos with specific requirements:
+
+#### **Required Photos:**
+1. **Exterior Photo** (required) *
+   - Good quality landscape format (800x450 px minimum)
+   - No faces or license plates should appear
+   - Shows mosque from outside
+
+2. **Interior Photo** (required) *
+   - Good quality landscape format (800x450 px minimum)
+   - No faces should appear
+   - Shows main prayer hall or interior
+
+#### **Optional Photo:**
+3. **Mosque/Association Logo** (optional)
+   - Good quality square format (500x500 px maximum)
+   - Preferably .png with transparent background
+   - Official mosque or association logo
+
+#### **Photo Guidelines:**
+- All photos must be high quality and well-lit
+- Landscape photos should showcase the mosque architecture
+- No people's faces should be visible in any photos
+- No license plates or personal information visible
+- Photos will be reviewed before approval
+
+### **Step 6: Registration Completion**
+- **Review & Confirm** - Summary of all entered information
+- **Terms & Conditions** - Accept terms of service and privacy policy
+- **Email Verification** - Verification email sent to provided address
+- **Account Activation** - Account activated after email verification
+- **Welcome Dashboard** - Redirect to mosque admin dashboard
+
+## 🎯 Registration User Experience Features
+
+### **Progress Indicator**
+- Visual progress bar showing current step (1 of 6, 2 of 6, etc.)
+- Step names clearly displayed
+- Ability to go back to previous steps
+- Save progress and continue later option
+
+### **Form Validation**
+- Real-time validation for each field
+- Clear error messages and guidance
+- Required field indicators (*)
+- Format validation (email, year, etc.)
+
+### **User-Friendly Features**
+- Auto-save draft functionality
+- Skip optional fields option
+- Help tooltips for complex fields
+- Photo upload preview and cropping tools
+- Language-specific keyboard support
+
+### **Mobile Optimization**
+- Touch-friendly interface
+- Optimized for small screens
+- Easy photo capture from camera
+- Swipe navigation between steps
+- Responsive design for all devices
 
 ### Mosque Account Features:
 - **Dashboard** - Manage mosque information and followers
