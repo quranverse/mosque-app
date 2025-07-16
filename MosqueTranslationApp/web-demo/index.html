@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mosque Translation App - Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        
+        .phone-container {
+            max-width: 375px;
+            margin: 20px auto;
+            background: #000;
+            border-radius: 25px;
+            padding: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        .screen {
+            background: #fff;
+            border-radius: 20px;
+            overflow: hidden;
+            height: 667px;
+            position: relative;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2E7D32, #1B5E20);
+            color: white;
+            padding: 40px 20px 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 20px;
+            margin-bottom: 5px;
+        }
+        
+        .header .subtitle {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        
+        .content {
+            padding: 20px;
+            height: calc(100% - 140px);
+            overflow-y: auto;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .prayer-card {
+            background: #E8F5E8;
+            border-left: 4px solid #2E7D32;
+        }
+        
+        .mosque-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .mosque-info h3 {
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        
+        .mosque-info p {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .follow-btn {
+            background: #2E7D32;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 15px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        
+        .tab-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-top: 1px solid #E0E0E0;
+            display: flex;
+            height: 60px;
+        }
+        
+        .tab {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            color: #2E7D32;
+        }
+        
+        .tab-icon {
+            font-size: 20px;
+            margin-bottom: 2px;
+        }
+        
+        .tab-text {
+            font-size: 10px;
+        }
+        
+        .live-indicator {
+            display: inline-flex;
+            align-items: center;
+            background: #4CAF50;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+        }
+        
+        .live-dot {
+            width: 6px;
+            height: 6px;
+            background: white;
+            border-radius: 50%;
+            margin-right: 4px;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .qibla-compass {
+            width: 200px;
+            height: 200px;
+            border: 2px solid #ddd;
+            border-radius: 50%;
+            margin: 20px auto;
+            position: relative;
+            background: white;
+        }
+        
+        .compass-needle {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #2E7D32;
+            font-size: 24px;
+        }
+        
+        .compass-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 8px;
+            height: 8px;
+            background: #333;
+            border-radius: 50%;
+        }
+        
+        .screen-content {
+            display: none;
+        }
+        
+        .screen-content.active {
+            display: block;
+        }
+        
+        .demo-note {
+            text-align: center;
+            padding: 20px;
+            background: #E3F2FD;
+            margin: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #2196F3;
+        }
+        
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .feature-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .feature-list li:before {
+            content: "✅ ";
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-note">
+        <h2>🕌 Mosque Translation App - Interactive Demo</h2>
+        <p>This is a web preview of the React Native app. Click the tabs below to explore different screens!</p>
+    </div>
+
+    <div class="phone-container">
+        <div class="screen">
+            <div class="header">
+                <h1>🕌 Assalamu Alaikum 🕌</h1>
+                <p class="subtitle">Welcome to Mosque Translation App</p>
+            </div>
+            
+            <div class="content">
+                <!-- Home Screen -->
+                <div class="screen-content active" id="home">
+                    <div class="card prayer-card">
+                        <h3>Next Prayer: Maghrib</h3>
+                        <p>6:45 PM • 2h 15m remaining</p>
+                    </div>
+                    
+                    <h3 style="margin: 20px 0 10px;">Nearby Mosques</h3>
+                    
+                    <div class="card mosque-card">
+                        <div class="mosque-info">
+                            <h3>Central Mosque</h3>
+                            <p>123 Main Street • 0.5 km</p>
+                            <span class="live-indicator">
+                                <span class="live-dot"></span>
+                                Live Translation
+                            </span>
+                        </div>
+                        <button class="follow-btn">Follow</button>
+                    </div>
+                    
+                    <div class="card mosque-card">
+                        <div class="mosque-info">
+                            <h3>Masjid Al-Noor</h3>
+                            <p>789 Pine Road • 2.1 km</p>
+                        </div>
+                        <button class="follow-btn">Follow</button>
+                    </div>
+                </div>
+                
+                <!-- Prayer Times Screen -->
+                <div class="screen-content" id="prayer">
+                    <h3 style="margin-bottom: 15px;">Today's Prayer Times</h3>
+                    
+                    <div class="card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span>🌅 Fajr</span>
+                            <span>5:30 AM</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span>🌞 Dhuhr</span>
+                            <span>12:45 PM</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span>🌤️ Asr</span>
+                            <span>4:20 PM</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; background: #E8F5E8; padding: 8px; border-radius: 5px;">
+                            <span><strong>🌆 Maghrib</strong></span>
+                            <span><strong>6:45 PM</strong></span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>🌙 Isha</span>
+                            <span>8:15 PM</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Qibla Screen -->
+                <div class="screen-content" id="qibla">
+                    <h3 style="text-align: center; margin-bottom: 20px;">Qibla Direction</h3>
+                    
+                    <div class="qibla-compass">
+                        <div class="compass-needle">📍</div>
+                        <div class="compass-center"></div>
+                        <div style="position: absolute; top: 5px; left: 50%; transform: translateX(-50%); font-size: 12px;">N</div>
+                        <div style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%); font-size: 12px;">E</div>
+                        <div style="position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); font-size: 12px;">S</div>
+                        <div style="position: absolute; left: 5px; top: 50%; transform: translateY(-50%); font-size: 12px;">W</div>
+                    </div>
+                    
+                    <div class="card" style="text-align: center;">
+                        <h3 style="color: #4CAF50;">Perfect! You are facing Qibla</h3>
+                        <p>Qibla: 58° NE</p>
+                        <p>Distance to Kaaba: 11,247 km</p>
+                    </div>
+                </div>
+                
+                <!-- Translation Screen -->
+                <div class="screen-content" id="translation">
+                    <div class="card" style="background: #2E7D32; color: white; text-align: center;">
+                        <span class="live-indicator" style="background: rgba(255,255,255,0.2);">
+                            <span class="live-dot"></span>
+                            LIVE
+                        </span>
+                        <h3>Central Mosque</h3>
+                    </div>
+                    
+                    <div class="card">
+                        <h4>Current Translation:</h4>
+                        <p style="text-align: right; font-family: serif; margin: 10px 0;">بسم الله الرحمن الرحيم</p>
+                        <p>In the name of Allah, the Most Gracious, the Most Merciful</p>
+                        <small style="color: #666;">2:34 PM</small>
+                    </div>
+                    
+                    <h4>Translation History</h4>
+                    <div class="card">
+                        <p style="text-align: right; font-family: serif;">الحمد لله رب العالمين</p>
+                        <p>All praise is due to Allah, Lord of all the worlds</p>
+                        <small style="color: #666;">2:33 PM</small>
+                    </div>
+                </div>
+                
+                <!-- Speeches Screen -->
+                <div class="screen-content" id="speeches">
+                    <h3 style="margin-bottom: 15px;">Friday Speech Library</h3>
+                    
+                    <div class="card">
+                        <h4>The Importance of Prayer in Daily Life</h4>
+                        <p style="color: #666; font-size: 12px;">Imam Abdullah Rahman • Central Mosque</p>
+                        <p style="color: #666; font-size: 12px;">Jan 12, 2024 • 30 min</p>
+                        <div style="margin-top: 10px;">
+                            <span style="background: #E8F5E8; padding: 2px 6px; border-radius: 10px; font-size: 10px; margin-right: 5px;">prayer</span>
+                            <span style="background: #E8F5E8; padding: 2px 6px; border-radius: 10px; font-size: 10px; margin-right: 5px;">spirituality</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h4>Understanding the Quran: Surah Al-Fatiha</h4>
+                        <p style="color: #666; font-size: 12px;">Dr. Fatima Al-Zahra • Masjid Al-Noor</p>
+                        <p style="color: #666; font-size: 12px;">Jan 5, 2024 • 35 min</p>
+                        <div style="margin-top: 10px;">
+                            <span style="background: #E8F5E8; padding: 2px 6px; border-radius: 10px; font-size: 10px; margin-right: 5px;">quran</span>
+                            <span style="background: #E8F5E8; padding: 2px 6px; border-radius: 10px; font-size: 10px; margin-right: 5px;">tafsir</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Control Screen -->
+                <div class="screen-content" id="control">
+                    <h3 style="margin-bottom: 15px;">Mosque Control Panel</h3>
+                    
+                    <div class="card">
+                        <h4>Live Translation Control</h4>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin: 10px 0;">
+                            <span>Translation Broadcast</span>
+                            <button style="background: #4CAF50; color: white; border: none; padding: 5px 10px; border-radius: 15px;">ON</button>
+                        </div>
+                        <p style="color: #4CAF50; font-size: 12px;">📺 LIVE • 25 listeners</p>
+                    </div>
+                    
+                    <div class="card">
+                        <h4>Mosque Information</h4>
+                        <p><strong>Name:</strong> Central Mosque</p>
+                        <p><strong>Address:</strong> 123 Main Street</p>
+                        <p><strong>Phone:</strong> +1234567890</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-bar">
+                <div class="tab active" onclick="showScreen('home')">
+                    <div class="tab-icon">🏠</div>
+                    <div class="tab-text">Home</div>
+                </div>
+                <div class="tab" onclick="showScreen('prayer')">
+                    <div class="tab-icon">🕐</div>
+                    <div class="tab-text">Prayer</div>
+                </div>
+                <div class="tab" onclick="showScreen('qibla')">
+                    <div class="tab-icon">🧭</div>
+                    <div class="tab-text">Qibla</div>
+                </div>
+                <div class="tab" onclick="showScreen('translation')">
+                    <div class="tab-icon">🌐</div>
+                    <div class="tab-text">Translation</div>
+                </div>
+                <div class="tab" onclick="showScreen('speeches')">
+                    <div class="tab-icon">🎵</div>
+                    <div class="tab-text">Speeches</div>
+                </div>
+                <div class="tab" onclick="showScreen('control')">
+                    <div class="tab-icon">⚙️</div>
+                    <div class="tab-text">Control</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="demo-note">
+        <h3>✅ Implemented Features</h3>
+        <ul class="feature-list">
+            <li>Prayer Times with accurate calculations</li>
+            <li>Qibla Direction compass</li>
+            <li>Mosque Discovery & Follow System</li>
+            <li>Live Translation (Arabic ↔ English)</li>
+            <li>Friday Speech Library & Archive</li>
+            <li>Islamic Design & UI Components</li>
+            <li>Notification System</li>
+            <li>Account-free Device-based System</li>
+        </ul>
+        
+        <p style="margin-top: 20px;"><strong>To run the full React Native app:</strong></p>
+        <ol style="text-align: left; display: inline-block;">
+            <li>Install Node.js 18+ and Expo CLI</li>
+            <li>Run <code>npm install</code> in the project directory</li>
+            <li>Run <code>npx expo start</code></li>
+            <li>Use Expo Go app on your phone or web browser</li>
+        </ol>
+    </div>
+
+    <script>
+        function showScreen(screenId) {
+            // Hide all screens
+            document.querySelectorAll('.screen-content').forEach(screen => {
+                screen.classList.remove('active');
+            });
+            
+            // Remove active class from all tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected screen
+            document.getElementById(screenId).classList.add('active');
+            
+            // Add active class to clicked tab
+            event.currentTarget.classList.add('active');
+        }
+    </script>
+</body>
+</html>
