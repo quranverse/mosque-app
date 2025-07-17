@@ -13,6 +13,11 @@ const database = require('./database/database');
 
 // Import routes
 const authRoutes = require('./routes/auth');
+const translationRoutes = require('./routes/translation');
+
+// Import services
+const MultiLanguageTranslationService = require('./services/MultiLanguageTranslationService');
+const VoiceRecognitionService = require('./services/VoiceRecognitionService');
 
 // Import middleware
 const { optionalAuth } = require('./middleware/auth');
@@ -60,6 +65,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/translation', translationRoutes);
 
 // In-memory storage for development (will be replaced with database)
 const activeSessions = new Map();
@@ -328,28 +334,259 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle sending translation (requires mosque auth)
-  socket.on('send_translation', async (translation) => {
+  // Handle sending original translation (requires mosque auth)
+  socket.on('send_original_translation', async (data, callback) => {
     try {
       const client = connectedClients.get(socket.id);
       if (!client || !client.currentSession || !client.isAuthenticated || client.userType !== 'mosque') {
+        callback && callback({ success: false, error: 'Mosque authentication required' });
         return;
       }
 
       const session = activeSessions.get(client.currentSession);
       if (!session || session.broadcaster !== client.deviceId) {
+        callback && callback({ success: false, error: 'Not authorized to broadcast' });
         return;
       }
 
-      // Store translation
-      session.translations.set(translation.id, translation);
+      const { originalText, context = 'general', metadata = {} } = data;
+
+      // Process through multi-language service
+      const translation = await MultiLanguageTranslationService.processOriginalTranslation(
+        client.currentSession,
+        originalText,
+        context,
+        metadata
+      );
+
+      // Store in session for backward compatibility
+      session.translations.set(translation.translationId, {
+        id: translation.translationId,
+        arabicText: originalText,
+        timestamp: translation.timestamp.toISOString(),
+        sessionId: client.currentSession,
+        sequenceNumber: translation.sequenceNumber,
+        context,
+        availableLanguages: session.targetLanguages || ['English']
+      });
 
       // Broadcast to all participants
-      io.to(client.currentSession).emit('translation_update', translation);
+      io.to(client.currentSession).emit('original_translation', {
+        translationId: translation.translationId,
+        originalText,
+        context,
+        sequenceNumber: translation.sequenceNumber,
+        timestamp: translation.timestamp,
+        targetLanguages: session.targetLanguages || ['English']
+      });
 
-      console.log(`Translation sent in session ${client.currentSession} by user ${client.userId}`);
+      callback && callback({
+        success: true,
+        translationId: translation.translationId,
+        sequenceNumber: translation.sequenceNumber
+      });
+
+      console.log(`Original translation sent in session ${client.currentSession} by user ${client.userId}`);
     } catch (error) {
-      console.error('Error sending translation:', error);
+      console.error('Error sending original translation:', error);
+      callback && callback({ success: false, error: 'Failed to send translation' });
+    }
+  });
+
+  // Handle language-specific translation (for translators)
+  socket.on('send_language_translation', async (data, callback) => {
+    try {
+      const client = connectedClients.get(socket.id);
+      if (!client || !client.currentSession || !client.isAuthenticated) {
+        callback && callback({ success: false, error: 'Authentication required' });
+        return;
+      }
+
+      const { translationId, language, text, confidence } = data;
+
+      // Add translation through multi-language service
+      const updatedTranslation = await MultiLanguageTranslationService.addLanguageTranslation(
+        translationId,
+        language,
+        text,
+        client.userId,
+        confidence
+      );
+
+      // Broadcast language-specific translation to all participants
+      io.to(client.currentSession).emit('language_translation_update', {
+        translationId,
+        language,
+        text,
+        confidence,
+        translatorId: client.userId,
+        timestamp: new Date()
+      });
+
+      callback && callback({ success: true });
+
+      console.log(`${language} translation added for ${translationId} by user ${client.userId}`);
+    } catch (error) {
+      console.error('Error sending language translation:', error);
+      callback && callback({ success: false, error: 'Failed to send translation' });
+    }
+  });
+
+  // Handle translator registration for specific language
+  socket.on('register_translator', async (data, callback) => {
+    try {
+      const client = connectedClients.get(socket.id);
+      if (!client || !client.currentSession || !client.isAuthenticated) {
+        callback && callback({ success: false, error: 'Authentication required' });
+        return;
+      }
+
+      const { language } = data;
+
+      // Validate language support
+      if (!MultiLanguageTranslationService.isLanguageSupported(language)) {
+        callback && callback({ success: false, error: 'Language not supported' });
+        return;
+      }
+
+      // Register translator
+      const translatorInfo = MultiLanguageTranslationService.registerTranslator(
+        socket.id,
+        client.currentSession,
+        language,
+        client.userId,
+        client.userType
+      );
+
+      // Notify session about new translator
+      socket.to(client.currentSession).emit('translator_joined', {
+        language,
+        translatorId: client.userId,
+        userType: client.userType
+      });
+
+      callback && callback({ success: true, translatorInfo });
+
+      console.log(`Translator registered for ${language} in session ${client.currentSession}`);
+    } catch (error) {
+      console.error('Error registering translator:', error);
+      callback && callback({ success: false, error: 'Failed to register translator' });
+    }
+  });
+
+  // Handle user language preference updates
+  socket.on('update_language_preferences', async (data, callback) => {
+    try {
+      const client = connectedClients.get(socket.id);
+      if (!client || !client.isAuthenticated) {
+        callback && callback({ success: false, error: 'Authentication required' });
+        return;
+      }
+
+      const preferences = data;
+
+      // Update preferences in service
+      const updatedPrefs = MultiLanguageTranslationService.setUserLanguagePreferences(
+        client.userId,
+        preferences
+      );
+
+      // Update in database
+      await User.findByIdAndUpdate(client.userId, {
+        'translationPreferences': updatedPrefs
+      });
+
+      callback && callback({ success: true, preferences: updatedPrefs });
+
+      console.log(`Language preferences updated for user ${client.userId}`);
+    } catch (error) {
+      console.error('Error updating language preferences:', error);
+      callback && callback({ success: false, error: 'Failed to update preferences' });
+    }
+  });
+
+  // Handle voice recognition start
+  socket.on('start_voice_recognition', async (data, callback) => {
+    try {
+      const client = connectedClients.get(socket.id);
+      if (!client || !client.isAuthenticated || client.userType !== 'mosque') {
+        callback && callback({ success: false, error: 'Mosque authentication required' });
+        return;
+      }
+
+      const { sessionId, provider, language } = data;
+
+      // Start voice recognition service
+      const result = await VoiceRecognitionService.startVoiceRecognition(sessionId, client.userId, {
+        provider,
+        language,
+        onTranscription: (transcription) => {
+          // Send transcription to client
+          socket.emit('voice_transcription', transcription);
+
+          // If final transcription, process for translation
+          if (transcription.isFinal) {
+            MultiLanguageTranslationService.processOriginalTranslation(
+              sessionId,
+              transcription.text,
+              'speech',
+              {
+                provider: transcription.provider,
+                confidence: transcription.confidence,
+                voiceRecognition: true
+              }
+            );
+          }
+        },
+        onError: (error) => {
+          socket.emit('voice_recognition_error', { message: error.message });
+        }
+      });
+
+      callback && callback(result);
+
+      console.log(`Voice recognition started for session ${sessionId}`);
+    } catch (error) {
+      console.error('Error starting voice recognition:', error);
+      callback && callback({ success: false, error: error.message });
+    }
+  });
+
+  // Handle audio chunk processing
+  socket.on('audio_chunk', async (data) => {
+    try {
+      const client = connectedClients.get(socket.id);
+      if (!client || !client.isAuthenticated || client.userType !== 'mosque') {
+        return;
+      }
+
+      const { sessionId, audioData, format } = data;
+
+      // Process audio chunk through voice recognition service
+      await VoiceRecognitionService.processAudioChunk(sessionId, audioData, format);
+
+    } catch (error) {
+      console.error('Error processing audio chunk:', error);
+      socket.emit('voice_recognition_error', { message: 'Audio processing failed' });
+    }
+  });
+
+  // Handle voice recognition stop
+  socket.on('stop_voice_recognition', async (data) => {
+    try {
+      const client = connectedClients.get(socket.id);
+      if (!client || !client.isAuthenticated) {
+        return;
+      }
+
+      const { sessionId } = data;
+
+      // Stop voice recognition service
+      await VoiceRecognitionService.stopVoiceRecognition(sessionId);
+
+      console.log(`Voice recognition stopped for session ${sessionId}`);
+    } catch (error) {
+      console.error('Error stopping voice recognition:', error);
     }
   });
 
@@ -361,6 +598,9 @@ io.on('connection', (socket) => {
         const session = activeSessions.get(client.currentSession);
         if (session) {
           session.participants.delete(socket.id);
+
+          // Unregister translator if applicable
+          MultiLanguageTranslationService.unregisterTranslator(socket.id);
 
           // If broadcaster disconnects, end the session
           if (client.deviceId === session.broadcaster) {
@@ -484,6 +724,7 @@ app.get('/api/sessions/active', (req, res) => {
 app.get('/api/status', async (req, res) => {
   try {
     const dbHealth = await database.healthCheck();
+    const dbStatus = await database.getStatus();
 
     res.json({
       status: 'running',
@@ -492,13 +733,17 @@ app.get('/api/status', async (req, res) => {
       activeSessions: activeSessions.size,
       registeredMosques: mosques.size,
       uptime: process.uptime(),
-      database: dbHealth,
+      database: {
+        ...dbHealth,
+        ...dbStatus
+      },
       version: '2.0.0',
       features: {
         authentication: true,
         photoUpload: true,
         emailService: !!config.email.user,
-        realTimeTranslation: true
+        realTimeTranslation: true,
+        databaseInitialized: dbStatus.isInitialized
       }
     });
   } catch (error) {

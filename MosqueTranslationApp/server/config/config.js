@@ -50,7 +50,50 @@ const config = {
   islamic: {
     defaultCalculationMethod: 'MoonsightingCommittee',
     supportedMadhabs: ['Hanafi', 'Shafi'],
-    supportedLanguages: ['Arabic', 'English', 'Urdu', 'Turkish', 'French', 'Spanish'],
+    supportedLanguages: [
+      // Major Islamic Languages
+      'Arabic', 'English', 'Urdu', 'Turkish', 'Persian', 'Malay', 'Indonesian',
+      // European Languages
+      'German', 'French', 'Spanish', 'Italian', 'Dutch', 'Portuguese', 'Russian',
+      // Asian Languages
+      'Chinese', 'Japanese', 'Korean', 'Hindi', 'Bengali', 'Tamil', 'Thai',
+      // African Languages
+      'Swahili', 'Hausa', 'Amharic',
+      // Other Languages
+      'Albanian', 'Bosnian', 'Kurdish', 'Pashto', 'Somali', 'Uzbek'
+    ],
+    languageGroups: {
+      'European': ['German', 'French', 'Spanish', 'Italian', 'Dutch', 'Portuguese', 'Russian', 'Albanian', 'Bosnian'],
+      'Asian': ['Chinese', 'Japanese', 'Korean', 'Hindi', 'Bengali', 'Tamil', 'Thai', 'Malay', 'Indonesian'],
+      'Islamic': ['Arabic', 'Urdu', 'Turkish', 'Persian', 'Kurdish', 'Pashto'],
+      'African': ['Swahili', 'Hausa', 'Amharic', 'Somali'],
+      'Popular': ['English', 'German', 'French', 'Spanish', 'Turkish', 'Urdu']
+    },
+    languageDetails: {
+      'Arabic': { code: 'ar', rtl: true, script: 'Arabic', family: 'Semitic' },
+      'English': { code: 'en', rtl: false, script: 'Latin', family: 'Germanic' },
+      'German': { code: 'de', rtl: false, script: 'Latin', family: 'Germanic' },
+      'French': { code: 'fr', rtl: false, script: 'Latin', family: 'Romance' },
+      'Spanish': { code: 'es', rtl: false, script: 'Latin', family: 'Romance' },
+      'Turkish': { code: 'tr', rtl: false, script: 'Latin', family: 'Turkic' },
+      'Urdu': { code: 'ur', rtl: true, script: 'Arabic', family: 'Indo-European' },
+      'Persian': { code: 'fa', rtl: true, script: 'Arabic', family: 'Indo-European' },
+      'Italian': { code: 'it', rtl: false, script: 'Latin', family: 'Romance' },
+      'Dutch': { code: 'nl', rtl: false, script: 'Latin', family: 'Germanic' },
+      'Portuguese': { code: 'pt', rtl: false, script: 'Latin', family: 'Romance' },
+      'Russian': { code: 'ru', rtl: false, script: 'Cyrillic', family: 'Slavic' },
+      'Chinese': { code: 'zh', rtl: false, script: 'Chinese', family: 'Sino-Tibetan' },
+      'Japanese': { code: 'ja', rtl: false, script: 'Japanese', family: 'Japonic' },
+      'Korean': { code: 'ko', rtl: false, script: 'Korean', family: 'Koreanic' },
+      'Hindi': { code: 'hi', rtl: false, script: 'Devanagari', family: 'Indo-European' },
+      'Bengali': { code: 'bn', rtl: false, script: 'Bengali', family: 'Indo-European' },
+      'Malay': { code: 'ms', rtl: false, script: 'Latin', family: 'Austronesian' },
+      'Indonesian': { code: 'id', rtl: false, script: 'Latin', family: 'Austronesian' },
+      'Swahili': { code: 'sw', rtl: false, script: 'Latin', family: 'Niger-Congo' },
+      'Kurdish': { code: 'ku', rtl: true, script: 'Arabic', family: 'Indo-European' },
+      'Albanian': { code: 'sq', rtl: false, script: 'Latin', family: 'Indo-European' },
+      'Bosnian': { code: 'bs', rtl: false, script: 'Latin', family: 'Slavic' }
+    },
     prayerMethods: [
       'MuslimWorldLeague',
       'Egyptian',
@@ -90,6 +133,45 @@ const config = {
     enableMockData: false,
     logLevel: 'error',
     enableCors: false,
+  },
+
+  // Voice Recognition APIs
+  google: {
+    speechApiKey: process.env.GOOGLE_SPEECH_API_KEY,
+    keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    projectId: process.env.GOOGLE_PROJECT_ID
+  },
+
+  azure: {
+    speechKey: process.env.AZURE_SPEECH_KEY,
+    speechRegion: process.env.AZURE_SPEECH_REGION || 'eastus'
+  },
+
+  aws: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION || 'us-east-1'
+  },
+
+  assemblyai: {
+    apiKey: process.env.ASSEMBLYAI_API_KEY
+  },
+
+  // Voice Recognition Settings
+  voiceRecognition: {
+    defaultProvider: process.env.VOICE_PROVIDER || 'google',
+    fallbackProviders: ['azure', 'whisper'],
+    chunkSize: 1024, // Audio chunk size in bytes
+    sampleRate: 16000, // Sample rate for audio processing
+    enableRealTime: true,
+    confidenceThreshold: 0.7, // Minimum confidence for final transcriptions
+    languages: {
+      'ar-SA': 'Arabic (Saudi Arabia)',
+      'ar-EG': 'Arabic (Egypt)',
+      'ar-JO': 'Arabic (Jordan)',
+      'ar-AE': 'Arabic (UAE)',
+      'ar-MA': 'Arabic (Morocco)'
+    }
   }
 };
 
