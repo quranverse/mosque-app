@@ -219,7 +219,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: Spacing['2xl'],
     paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
     marginBottom: Spacing.xl,
+    overflow: 'visible',
   },
   patternContainer: {
     position: 'absolute',
@@ -243,6 +245,9 @@ const styles = StyleSheet.create({
     color: Colors.text.inverse,
     textAlign: 'center',
     marginBottom: Spacing.sm,
+    lineHeight: Typography.sizes['3xl'] * Typography.lineHeights.normal,
+    includeFontPadding: false,
+    paddingVertical: 2,
   },
   welcomeSubtitle: {
     fontSize: Typography.sizes.xl,
@@ -250,14 +255,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: Spacing.md,
     opacity: 0.9,
+    lineHeight: Typography.sizes.xl * Typography.lineHeights.normal,
+    includeFontPadding: false,
+    paddingVertical: 2,
   },
   welcomeDescription: {
     fontSize: Typography.sizes.base,
     color: Colors.text.inverse,
     textAlign: 'center',
-    lineHeight: Typography.lineHeights.relaxed,
+    lineHeight: Typography.sizes.base * Typography.lineHeights.relaxed,
     opacity: 0.8,
     paddingHorizontal: Spacing.lg,
+    includeFontPadding: false,
+    paddingVertical: 4,
   },
   choiceSection: {
     flex: 1,
@@ -268,7 +278,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: BorderRadius['2xl'],
     paddingTop: Spacing.xl,
     paddingHorizontal: Spacing.lg,
-    minHeight: height * 0.65,
+    paddingBottom: Spacing.xl,
+    // Remove minHeight to allow natural content flow
   },
   choiceTitle: {
     fontSize: Typography.sizes.xl,
@@ -276,6 +287,8 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
     textAlign: 'center',
     marginBottom: Spacing.xl,
+    lineHeight: Typography.sizes.xl * Typography.lineHeights.normal,
+    includeFontPadding: false,
   },
   optionCard: {
     backgroundColor: Colors.neutral.surface,
@@ -289,26 +302,34 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
-    minHeight: 280, // Ensure minimum height for content
+    minHeight: 280, // Ensure adequate height for content
+    overflow: 'visible', // Ensure content is not clipped
   },
   optionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: Spacing.md,
+    minHeight: 48, // Ensure adequate height for icon and text
+    overflow: 'visible', // Ensure text is not clipped
   },
   optionTitle: {
     fontSize: Typography.sizes.xl,
     fontWeight: Typography.weights.semibold,
     color: Colors.text.primary,
     marginLeft: Spacing.md,
-    flex: 1,
-    flexWrap: 'wrap',
+    lineHeight: Typography.sizes.xl * Typography.lineHeights.normal,
+    textAlign: 'left',
+    includeFontPadding: false, // Android specific
   },
   optionDescription: {
     fontSize: Typography.sizes.base,
     color: Colors.text.secondary,
-    lineHeight: Typography.lineHeights.relaxed,
+    lineHeight: Typography.sizes.base * Typography.lineHeights.relaxed,
     marginBottom: Spacing.lg,
+    textAlign: 'left',
+    includeFontPadding: false, // Android specific - removes extra padding
+    paddingVertical: 4, // Increased padding to prevent clipping
+    // backgroundColor: 'rgba(255,0,0,0.1)', // Temporary debug background
   },
   optionFeatures: {
     marginBottom: Spacing.xl,
@@ -323,7 +344,10 @@ const styles = StyleSheet.create({
     color: Colors.text.secondary,
     marginLeft: Spacing.sm,
     flex: 1,
-    flexWrap: 'wrap',
+    textAlign: 'left',
+    includeFontPadding: false, // Android specific - removes extra padding
+    lineHeight: Typography.sizes.sm * Typography.lineHeights.normal,
+    paddingVertical: 1, // Small padding to prevent clipping
   },
   optionButton: {
     marginTop: Spacing.md,
@@ -331,22 +355,29 @@ const styles = StyleSheet.create({
   footer: {
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.xl,
+    paddingBottom: Spacing.lg,
     alignItems: 'center',
+    overflow: 'visible',
   },
   footerText: {
     fontSize: Typography.sizes.sm,
     color: Colors.text.inverse,
     textAlign: 'center',
     fontStyle: 'italic',
-    lineHeight: Typography.lineHeights.relaxed,
+    lineHeight: Typography.sizes.sm * Typography.lineHeights.relaxed,
     opacity: 0.8,
     marginBottom: Spacing.xs,
+    includeFontPadding: false,
+    paddingVertical: 2,
   },
   footerReference: {
     fontSize: Typography.sizes.xs,
     color: Colors.text.inverse,
     textAlign: 'center',
     opacity: 0.6,
+    lineHeight: Typography.sizes.xs * Typography.lineHeights.normal,
+    includeFontPadding: false,
+    paddingVertical: 1,
   },
 });
 
