@@ -17,6 +17,7 @@ const translationRoutes = require('./routes/translation');
 
 // Import services
 const MultiLanguageTranslationService = require('./services/MultiLanguageTranslationService');
+const VoiceRecognitionService = require('./services/VoiceRecognitionService');
 
 // Import middleware
 const { optionalAuth } = require('./middleware/auth');
@@ -501,6 +502,91 @@ io.on('connection', (socket) => {
     } catch (error) {
       console.error('Error updating language preferences:', error);
       callback && callback({ success: false, error: 'Failed to update preferences' });
+    }
+  });
+
+  // Handle voice recognition start
+  socket.on('start_voice_recognition', async (data, callback) => {
+    try {
+      const client = connectedClients.get(socket.id);
+      if (!client || !client.isAuthenticated || client.userType !== 'mosque') {
+        callback && callback({ success: false, error: 'Mosque authentication required' });
+        return;
+      }
+
+      const { sessionId, provider, language } = data;
+
+      // Start voice recognition service
+      const result = await VoiceRecognitionService.startVoiceRecognition(sessionId, client.userId, {
+        provider,
+        language,
+        onTranscription: (transcription) => {
+          // Send transcription to client
+          socket.emit('voice_transcription', transcription);
+
+          // If final transcription, process for translation
+          if (transcription.isFinal) {
+            MultiLanguageTranslationService.processOriginalTranslation(
+              sessionId,
+              transcription.text,
+              'speech',
+              {
+                provider: transcription.provider,
+                confidence: transcription.confidence,
+                voiceRecognition: true
+              }
+            );
+          }
+        },
+        onError: (error) => {
+          socket.emit('voice_recognition_error', { message: error.message });
+        }
+      });
+
+      callback && callback(result);
+
+      console.log(`Voice recognition started for session ${sessionId}`);
+    } catch (error) {
+      console.error('Error starting voice recognition:', error);
+      callback && callback({ success: false, error: error.message });
+    }
+  });
+
+  // Handle audio chunk processing
+  socket.on('audio_chunk', async (data) => {
+    try {
+      const client = connectedClients.get(socket.id);
+      if (!client || !client.isAuthenticated || client.userType !== 'mosque') {
+        return;
+      }
+
+      const { sessionId, audioData, format } = data;
+
+      // Process audio chunk through voice recognition service
+      await VoiceRecognitionService.processAudioChunk(sessionId, audioData, format);
+
+    } catch (error) {
+      console.error('Error processing audio chunk:', error);
+      socket.emit('voice_recognition_error', { message: 'Audio processing failed' });
+    }
+  });
+
+  // Handle voice recognition stop
+  socket.on('stop_voice_recognition', async (data) => {
+    try {
+      const client = connectedClients.get(socket.id);
+      if (!client || !client.isAuthenticated) {
+        return;
+      }
+
+      const { sessionId } = data;
+
+      // Stop voice recognition service
+      await VoiceRecognitionService.stopVoiceRecognition(sessionId);
+
+      console.log(`Voice recognition stopped for session ${sessionId}`);
+    } catch (error) {
+      console.error('Error stopping voice recognition:', error);
     }
   });
 

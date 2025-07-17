@@ -15,6 +15,7 @@ import io from 'socket.io-client';
 import { API_BASE_URL } from '../../config/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MultiLanguageTranslationView from '../../components/Translation/MultiLanguageTranslationView';
+import VoiceRecognitionComponent from '../../components/Audio/VoiceRecognitionComponent';
 import multiLanguageTranslationService from '../../services/MultiLanguageTranslationService';
 
 const { width, height } = Dimensions.get('window');
@@ -460,13 +461,32 @@ const TranslationScreen = ({ navigation, route }) => {
           </View>
         </ScrollView>
       ) : (
-        /* Multi-Language Translation View */
-        <MultiLanguageTranslationView
-          sessionId={selectedSession?.sessionId}
-          socket={socket}
-          userType={userType}
-          isVisible={showTranslationView}
-        />
+        /* Multi-Language Translation View with Voice Recognition */
+        <View style={{ flex: 1 }}>
+          {/* Voice Recognition Component (Imam/Mosque Admin Only) */}
+          {userType === 'mosque' && (
+            <VoiceRecognitionComponent
+              sessionId={selectedSession?.sessionId}
+              socket={socket}
+              onTranscription={(transcription) => {
+                console.log('Voice transcription:', transcription);
+              }}
+              onError={(error) => {
+                console.error('Voice recognition error:', error);
+                Alert.alert('Voice Recognition Error', error.message);
+              }}
+              isImam={true}
+            />
+          )}
+
+          {/* Multi-Language Translation View */}
+          <MultiLanguageTranslationView
+            sessionId={selectedSession?.sessionId}
+            socket={socket}
+            userType={userType}
+            isVisible={showTranslationView}
+          />
+        </View>
       )}
     </View>
   );

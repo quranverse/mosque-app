@@ -133,6 +133,45 @@ const config = {
     enableMockData: false,
     logLevel: 'error',
     enableCors: false,
+  },
+
+  // Voice Recognition APIs
+  google: {
+    speechApiKey: process.env.GOOGLE_SPEECH_API_KEY,
+    keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    projectId: process.env.GOOGLE_PROJECT_ID
+  },
+
+  azure: {
+    speechKey: process.env.AZURE_SPEECH_KEY,
+    speechRegion: process.env.AZURE_SPEECH_REGION || 'eastus'
+  },
+
+  aws: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION || 'us-east-1'
+  },
+
+  assemblyai: {
+    apiKey: process.env.ASSEMBLYAI_API_KEY
+  },
+
+  // Voice Recognition Settings
+  voiceRecognition: {
+    defaultProvider: process.env.VOICE_PROVIDER || 'google',
+    fallbackProviders: ['azure', 'whisper'],
+    chunkSize: 1024, // Audio chunk size in bytes
+    sampleRate: 16000, // Sample rate for audio processing
+    enableRealTime: true,
+    confidenceThreshold: 0.7, // Minimum confidence for final transcriptions
+    languages: {
+      'ar-SA': 'Arabic (Saudi Arabia)',
+      'ar-EG': 'Arabic (Egypt)',
+      'ar-JO': 'Arabic (Jordan)',
+      'ar-AE': 'Arabic (UAE)',
+      'ar-MA': 'Arabic (Morocco)'
+    }
   }
 };
 
