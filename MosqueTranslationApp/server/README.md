@@ -40,7 +40,10 @@ This is the enhanced backend server for the Mosque Translation App, now featurin
 - `GET /status` - Check authentication status
 
 #### Enhanced Features
+- **Multi-Language Translation** with 26+ supported languages
+- **Dual Subtitle System** - Show two languages simultaneously
 - **Real-time Translation** with authentication support
+- **Community Translation** - Multiple translators per session
 - **Mosque Discovery** with account-based features
 - **Session Management** with user tracking
 - **Email Service** for verification and notifications
@@ -76,36 +79,69 @@ CORS_ORIGIN=*
 
 ### Prerequisites
 - Node.js (v16 or higher)
-- MongoDB (local or cloud)
+- MongoDB Atlas account (free tier available)
 - npm or yarn
 
-### Installation
+### Quick Setup (Recommended)
 ```bash
 cd MosqueTranslationApp/server
 npm install
+npm run setup
 ```
 
-### Database Setup
-1. Install MongoDB locally or use MongoDB Atlas
-2. Update `MONGODB_URI` in your `.env` file
-3. The server will automatically create indexes and seed mock data in development
+The setup wizard will guide you through:
+1. MongoDB Atlas connection configuration
+2. JWT secret generation
+3. Email service setup (optional)
+4. Server configuration
+5. Database connection testing
+
+### Manual Setup
+1. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+
+2. **Configure Environment**:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your MongoDB Atlas connection string
+   ```
+
+3. **Set up MongoDB Atlas**:
+   - Create a MongoDB Atlas account at https://cloud.mongodb.com
+   - Create a new cluster (free tier available)
+   - Create a database user
+   - Whitelist your IP address
+   - Get your connection string
+
+4. **Initialize Database**:
+   ```bash
+   npm run test-db
+   ```
 
 ### Running the Server
 ```bash
-# Production mode
-npm start
-
 # Development mode with auto-reload
 npm run dev
+
+# Production mode
+npm start
 
 # Run original mock server (for comparison)
 npm run mock
 ```
 
-### Testing Authentication
+### Testing the Setup
 ```bash
-# Run authentication tests (requires server to be running)
-node test-auth.js
+# Test authentication endpoints
+npm test
+
+# Test multi-language translation system
+npm run test-multilang
+
+# Check server status
+curl http://localhost:3001/api/status
 ```
 
 ## 📊 Features Implemented

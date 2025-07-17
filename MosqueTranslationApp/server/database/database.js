@@ -101,19 +101,11 @@ class Database {
     }
   }
 
-  // Initialize database with indexes and default data
+  // Initialize database with comprehensive setup
   async initialize() {
     try {
-      console.log('Initializing database...');
-      
-      // Create indexes for better performance
-      await this.createIndexes();
-      
-      // Seed default data if in development
-      if (config.nodeEnv === 'development' && config.enableMockData) {
-        await this.seedMockData();
-      }
-      
+      const databaseInitializer = require('./init-database');
+      await databaseInitializer.initialize();
       console.log('✅ Database initialized successfully');
     } catch (error) {
       console.error('❌ Database initialization failed:', error);
@@ -121,89 +113,16 @@ class Database {
     }
   }
 
-  async createIndexes() {
+  // Get database status
+  async getStatus() {
     try {
-      const User = require('../models/User');
-      const Mosque = require('../models/Mosque');
-      
-      // User indexes
-      await User.createIndexes();
-      
-      // Mosque indexes
-      await Mosque.createIndexes();
-      
-      console.log('✅ Database indexes created');
+      const databaseInitializer = require('./init-database');
+      return await databaseInitializer.getStatus();
     } catch (error) {
-      console.error('❌ Failed to create indexes:', error);
-      throw error;
-    }
-  }
-
-  async seedMockData() {
-    try {
-      const User = require('../models/User');
-      const Mosque = require('../models/Mosque');
-      
-      // Check if data already exists
-      const userCount = await User.countDocuments();
-      const mosqueCount = await Mosque.countDocuments();
-      
-      if (userCount > 0 || mosqueCount > 0) {
-        console.log('Mock data already exists, skipping seed');
-        return;
-      }
-      
-      // Create mock mosque accounts
-      const mockMosques = [
-        {
-          email: 'admin@centralmosque.com',
-          password: 'password123',
-          userType: 'mosque',
-          mosqueName: 'Central Mosque',
-          mosqueAddress: '123 Main Street, New York, NY 10001',
-          phone: '+1-555-0101',
-          location: {
-            type: 'Point',
-            coordinates: [-74.0060, 40.7128] // [longitude, latitude]
-          },
-          madhab: 'Hanafi',
-          prayerTimeMethod: 'MoonsightingCommittee',
-          servicesOffered: ['Live Translation', 'Friday Speeches', 'Educational Programs'],
-          languagesSupported: ['Arabic', 'English', 'Urdu'],
-          capacity: 500,
-          facilities: ['Parking', 'Wheelchair Access', 'Wudu Area']
-        },
-        {
-          email: 'admin@masjidalnoor.com',
-          password: 'password123',
-          userType: 'mosque',
-          mosqueName: 'Masjid Al-Noor',
-          mosqueAddress: '456 Oak Avenue, New York, NY 10002',
-          phone: '+1-555-0102',
-          location: {
-            type: 'Point',
-            coordinates: [-73.9851, 40.7589]
-          },
-          madhab: 'Shafi',
-          prayerTimeMethod: 'MuslimWorldLeague',
-          servicesOffered: ['Live Translation', 'Youth Programs', 'Community Events'],
-          languagesSupported: ['Arabic', 'English', 'Turkish'],
-          capacity: 300,
-          facilities: ['Parking', 'Library', 'Community Hall']
-        }
-      ];
-      
-      // Create mosque users
-      for (const mosqueData of mockMosques) {
-        const user = new User(mosqueData);
-        await user.save();
-        console.log(`Created mock mosque: ${mosqueData.mosqueName}`);
-      }
-      
-      console.log('✅ Mock data seeded successfully');
-    } catch (error) {
-      console.error('❌ Failed to seed mock data:', error);
-      throw error;
+      return {
+        isInitialized: false,
+        error: error.message
+      };
     }
   }
 }

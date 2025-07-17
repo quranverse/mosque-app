@@ -71,7 +71,7 @@ const userSchema = new mongoose.Schema({
   madhab: {
     type: String,
     enum: config.islamic.supportedMadhabs,
-    default: 'Hanafi'
+    default: 'Suni-Selafi'
   },
   prayerTimeMethod: {
     type: String,
@@ -158,12 +158,99 @@ const userSchema = new mongoose.Schema({
     },
     fontSize: {
       type: String,
-      enum: ['small', 'medium', 'large'],
+      enum: ['small', 'medium', 'large', 'extra-large'],
       default: 'medium'
     },
     rtlSupport: {
       type: Boolean,
       default: false
+    }
+  },
+
+  // Translation Preferences (Enhanced Multi-Language Support)
+  translationPreferences: {
+    primaryLanguage: {
+      type: String,
+      enum: config.islamic.supportedLanguages,
+      default: 'English'
+    },
+    secondaryLanguage: {
+      type: String,
+      enum: config.islamic.supportedLanguages,
+      default: null
+    },
+    showDualSubtitles: {
+      type: Boolean,
+      default: false
+    },
+    preferredLanguages: [{
+      language: {
+        type: String,
+        enum: config.islamic.supportedLanguages
+      },
+      priority: {
+        type: Number,
+        min: 1,
+        max: 10
+      }
+    }],
+    autoLanguageDetection: {
+      type: Boolean,
+      default: true
+    },
+    translationSpeed: {
+      type: String,
+      enum: ['slow', 'normal', 'fast'],
+      default: 'normal'
+    },
+    showOriginalText: {
+      type: Boolean,
+      default: true
+    },
+    translationDisplay: {
+      type: String,
+      enum: ['overlay', 'sidebar', 'bottom', 'popup'],
+      default: 'bottom'
+    },
+    fontSettings: {
+      primaryFontSize: {
+        type: String,
+        enum: ['small', 'medium', 'large', 'extra-large'],
+        default: 'medium'
+      },
+      secondaryFontSize: {
+        type: String,
+        enum: ['small', 'medium', 'large', 'extra-large'],
+        default: 'small'
+      },
+      fontWeight: {
+        type: String,
+        enum: ['normal', 'bold'],
+        default: 'normal'
+      },
+      lineHeight: {
+        type: String,
+        enum: ['compact', 'normal', 'relaxed'],
+        default: 'normal'
+      }
+    },
+    colorSettings: {
+      primaryTextColor: {
+        type: String,
+        default: '#000000'
+      },
+      secondaryTextColor: {
+        type: String,
+        default: '#666666'
+      },
+      backgroundColor: {
+        type: String,
+        default: '#FFFFFF'
+      },
+      highlightColor: {
+        type: String,
+        default: '#2E7D32'
+      }
     }
   },
   
