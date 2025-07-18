@@ -109,6 +109,17 @@ const Step2BasicInfo = ({ data, onUpdate }) => {
           required
         />
 
+        {/* Phone Number */}
+        <IslamicInput
+          label="Phone Number"
+          value={data.phone}
+          onChangeText={(value) => handleInputChange('phone', value)}
+          placeholder="5551234567"
+          keyboardType="phone-pad"
+          leftIcon="phone"
+          required
+        />
+
         {/* Website (Optional) */}
         <IslamicInput
           label="Website (Optional)"

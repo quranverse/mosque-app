@@ -1,4 +1,5 @@
 // Voice Recognition Component for Real-Time Audio Streaming
+// Updated to use expo-audio for SDK 54 compatibility
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -10,7 +11,13 @@ import {
   PermissionsAndroid
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Audio } from 'expo-av';
+import {
+  useAudioRecorder,
+  useAudioPlayer,
+  AudioModule,
+  RecordingOptions,
+  RecordingStatus
+} from 'expo-audio';
 
 const VoiceRecognitionComponent = ({
   sessionId,
@@ -60,8 +67,8 @@ const VoiceRecognitionComponent = ({
         );
         setHasPermission(granted === PermissionsAndroid.RESULTS.GRANTED);
       } else {
-        // iOS permission handling
-        const { status } = await Audio.requestPermissionsAsync();
+        // iOS permission handling with expo-audio
+        const { status } = await AudioModule.requestPermissionsAsync();
         setHasPermission(status === 'granted');
       }
     } catch (error) {
@@ -144,33 +151,19 @@ const VoiceRecognitionComponent = ({
 
   const startAudioCapture = async () => {
     try {
-      // Configure audio recording
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_DO_NOT_MIX,
-        shouldDuckAndroid: true,
-        interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DO_NOT_MIX,
-        playThroughEarpieceAndroid: false,
-      });
-
+      // Configure audio recording with expo-audio
       const recordingOptions = {
+        extension: '.m4a',
+        sampleRate: 44100,
+        numberOfChannels: 1,
+        bitRate: 128000,
         android: {
-          extension: '.m4a',
-          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
-          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
+          outputFormat: 'mpeg4',
+          audioEncoder: 'aac',
         },
         ios: {
-          extension: '.m4a',
-          outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
-          audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
+          outputFormat: 'mpeg4aac',
+          audioQuality: 'high',
           linearPCMBitDepth: 16,
           linearPCMIsBigEndian: false,
           linearPCMIsFloat: false,
@@ -181,8 +174,12 @@ const VoiceRecognitionComponent = ({
         },
       };
 
-      const { recording } = await Audio.Recording.createAsync(recordingOptions);
-      recordingRef.current = recording;
+      // Use the new expo-audio recorder hook
+      const recorder = useAudioRecorder(recordingOptions);
+      recordingRef.current = recorder;
+
+      // Start recording
+      await recorder.record();
 
       // Start streaming audio chunks
       startAudioStreaming();

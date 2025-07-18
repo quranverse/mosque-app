@@ -8,7 +8,6 @@ class PrayerTimeService {
       const calculationParams = CalculationMethod.MoonsightingCommittee();
       
       // You can customize calculation parameters
-      calculationParams.madhab = 'shafi'; // or 'hanafi'
       calculationParams.highLatitudeRule = 'SeventhOfTheNight';
 
       const prayerTimes = new PrayerTimes(coordinates, date, calculationParams);

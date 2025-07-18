@@ -70,7 +70,7 @@ const Step5Photos = ({ data, onUpdate }) => {
     setUploading(true);
     try {
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        // mediaTypes defaults to 'images' so we can omit it
         allowsEditing: true,
         aspect: photoType === 'logo' ? [1, 1] : [16, 9],
         quality: 0.8,
@@ -94,7 +94,7 @@ const Step5Photos = ({ data, onUpdate }) => {
     setUploading(true);
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        // mediaTypes defaults to 'images' so we can omit it
         allowsEditing: true,
         aspect: photoType === 'logo' ? [1, 1] : [16, 9],
         quality: 0.8,

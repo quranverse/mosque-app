@@ -20,6 +20,7 @@ export const Colors = {
   // Neutral Colors
   neutral: {
     white: '#FFFFFF',
+    black: '#000000',
     background: '#F5F5F5',
     surface: '#FFFFFF',
     border: '#E0E0E0',
@@ -75,7 +76,7 @@ export const Typography = {
     bold: 'System',
     arabic: 'serif', // Better for Arabic text
   },
-  
+
   // Font Sizes
   sizes: {
     xs: 10,
@@ -89,7 +90,7 @@ export const Typography = {
     '5xl': 32,
     '6xl': 36,
   },
-  
+
   // Line Heights
   lineHeights: {
     tight: 1.2,
@@ -97,13 +98,71 @@ export const Typography = {
     relaxed: 1.6,
     loose: 1.8,
   },
-  
+
   // Font Weights
   weights: {
     normal: '400',
     medium: '500',
     semibold: '600',
     bold: '700',
+  },
+
+  // Heading Styles
+  heading: {
+    h1: {
+      fontSize: 32,
+      fontWeight: '700',
+      lineHeight: 38,
+    },
+    h2: {
+      fontSize: 28,
+      fontWeight: '700',
+      lineHeight: 34,
+    },
+    h3: {
+      fontSize: 24,
+      fontWeight: '600',
+      lineHeight: 30,
+    },
+    h4: {
+      fontSize: 20,
+      fontWeight: '600',
+      lineHeight: 26,
+    },
+    h5: {
+      fontSize: 18,
+      fontWeight: '600',
+      lineHeight: 24,
+    },
+    h6: {
+      fontSize: 16,
+      fontWeight: '600',
+      lineHeight: 22,
+    },
+  },
+
+  // Body Text Styles
+  body: {
+    large: {
+      fontSize: 18,
+      fontWeight: '400',
+      lineHeight: 26,
+    },
+    medium: {
+      fontSize: 16,
+      fontWeight: '400',
+      lineHeight: 24,
+    },
+    small: {
+      fontSize: 14,
+      fontWeight: '400',
+      lineHeight: 20,
+    },
+    tiny: {
+      fontSize: 12,
+      fontWeight: '400',
+      lineHeight: 18,
+    },
   },
 };
 
@@ -113,6 +172,7 @@ export const Spacing = {
   md: 12,
   lg: 16,
   xl: 20,
+  xxl: 28,
   '2xl': 24,
   '3xl': 32,
   '4xl': 40,

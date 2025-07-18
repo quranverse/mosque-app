@@ -91,76 +91,9 @@ class LocationService {
   }
 
   static async findNearbyMosques(latitude, longitude, radius = 10) {
-    // This is a mock implementation
-    // In a real app, this would call a mosque discovery API like Google Places API
-    // or a specialized Islamic places API
-    
-    const mockMosques = [
-      {
-        id: 1,
-        name: 'Central Mosque',
-        latitude: latitude + 0.001,
-        longitude: longitude + 0.001,
-        address: '123 Main Street',
-        hasLiveTranslation: true,
-        followers: 150,
-        phone: '+1234567890',
-        website: 'https://centralmosque.org',
-      },
-      {
-        id: 2,
-        name: 'Community Islamic Center',
-        latitude: latitude + 0.005,
-        longitude: longitude - 0.003,
-        address: '456 Oak Avenue',
-        hasLiveTranslation: false,
-        followers: 89,
-        phone: '+1234567891',
-        website: 'https://communityislamic.org',
-      },
-      {
-        id: 3,
-        name: 'Masjid Al-Noor',
-        latitude: latitude - 0.008,
-        longitude: longitude + 0.004,
-        address: '789 Pine Road',
-        hasLiveTranslation: true,
-        followers: 203,
-        phone: '+1234567892',
-        website: 'https://masjidalnoor.org',
-      },
-      {
-        id: 4,
-        name: 'Islamic Society Mosque',
-        latitude: latitude + 0.012,
-        longitude: longitude - 0.007,
-        address: '321 Cedar Lane',
-        hasLiveTranslation: true,
-        followers: 175,
-        phone: '+1234567893',
-        website: 'https://islamicsociety.org',
-      },
-    ];
-
-    // Calculate distances and filter by radius
-    const mosquesWithDistance = mockMosques
-      .map(mosque => {
-        const distance = this.calculateDistance(
-          latitude,
-          longitude,
-          mosque.latitude,
-          mosque.longitude
-        );
-        return {
-          ...mosque,
-          distance: distance,
-          distanceFormatted: this.formatDistance(distance),
-        };
-      })
-      .filter(mosque => mosque.distance <= radius)
-      .sort((a, b) => a.distance - b.distance);
-
-    return mosquesWithDistance;
+    // Real implementation should use MosqueService API
+    // This method is deprecated - use MosqueService.getNearbyMosques() instead
+    return [];
   }
 
   static async getLocationFromAddress(address) {

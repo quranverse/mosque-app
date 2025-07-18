@@ -67,17 +67,7 @@ const userSchema = new mongoose.Schema({
     }
   },
   
-  // Islamic Settings
-  madhab: {
-    type: String,
-    enum: config.islamic.supportedMadhabs,
-    default: 'Suni-Selafi'
-  },
-  prayerTimeMethod: {
-    type: String,
-    enum: config.islamic.prayerMethods,
-    default: config.islamic.defaultCalculationMethod
-  },
+
   
   // Mosque Services (only for mosque accounts)
   servicesOffered: [{
@@ -284,7 +274,7 @@ const userSchema = new mongoose.Schema({
 });
 
 // Indexes for better performance
-userSchema.index({ email: 1 });
+// Note: email index is automatically created by unique: true in schema
 userSchema.index({ userType: 1 });
 userSchema.index({ location: '2dsphere' }); // For geospatial queries
 userSchema.index({ 'followedMosques.mosqueId': 1 });

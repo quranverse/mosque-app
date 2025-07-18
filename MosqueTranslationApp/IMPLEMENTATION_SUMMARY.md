@@ -172,7 +172,6 @@ npm start
 
 ### Prayer Time Settings
 - Calculation method selection
-- Madhab preferences (Shafi/Hanafi)
 - High latitude rule adjustments
 
 ### Notification Settings

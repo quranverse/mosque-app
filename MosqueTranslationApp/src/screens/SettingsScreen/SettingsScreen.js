@@ -59,13 +59,10 @@ const SettingsScreen = ({ navigation }) => {
     };
     setNotifications(newNotifications);
     
-    // Update user preferences
+    // Update user preferences (works for both anonymous and authenticated users)
     if (currentUser) {
-      await AuthService.updateProfile({
-        preferences: {
-          ...currentUser.preferences,
-          notifications: newNotifications,
-        },
+      await AuthService.updateUserPreferences({
+        notifications: newNotifications,
       });
     }
   };
@@ -145,23 +142,55 @@ const SettingsScreen = ({ navigation }) => {
         {currentUser && (
           <View style={styles.userSection}>
             <View style={styles.userInfo}>
-              <Icon 
-                name={AuthService.isMosqueAdmin() ? 'account-balance' : 'person'} 
-                size={40} 
-                color={Colors.primary.main} 
+              <Icon
+                name={AuthService.isMosqueAdmin() ? 'account-balance' :
+                      AuthService.isAnonymous() ? 'person-outline' : 'person'}
+                size={40}
+                color={Colors.primary.main}
               />
               <View style={styles.userText}>
                 <Text style={styles.userName}>
-                  {AuthService.isMosqueAdmin() 
+                  {AuthService.isMosqueAdmin()
                     ? currentUser.mosqueName || 'Mosque Admin'
+                    : AuthService.isAnonymous()
+                    ? 'Anonymous User'
                     : 'Individual User'
                   }
                 </Text>
                 <Text style={styles.userEmail}>
-                  {currentUser.email || 'No email'}
+                  {AuthService.isAnonymous()
+                    ? 'Using app without account'
+                    : currentUser.email || 'No email'
+                  }
                 </Text>
               </View>
             </View>
+
+            {/* Show account creation option for anonymous users */}
+            {AuthService.isAnonymous() && (
+              <TouchableOpacity
+                style={styles.createAccountButton}
+                onPress={() => {
+                  Alert.alert(
+                    'Create Account',
+                    'Creating an account will clear your current session. Your followed mosques will be lost unless you follow them again after creating an account.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Continue',
+                        onPress: async () => {
+                          await AuthService.logout();
+                          // Navigation will be handled automatically by the auth listener
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Icon name="person-add" size={20} color={Colors.primary.main} />
+                <Text style={styles.createAccountText}>Create Account</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -244,6 +273,15 @@ const SettingsScreen = ({ navigation }) => {
               },
               <Icon name="chevron-right" size={24} color={Colors.text.secondary} />
             )}
+            {renderSettingItem(
+              'wifi',
+              'Connection Test',
+              'Test connection to backend server',
+              () => {
+                navigation.navigate('ConnectionTest');
+              },
+              <Icon name="chevron-right" size={24} color={Colors.text.secondary} />
+            )}
           </>
         ))}
 
@@ -307,6 +345,24 @@ const styles = StyleSheet.create({
   userEmail: {
     fontSize: Typography.sizes.sm,
     color: Colors.text.secondary,
+  },
+  createAccountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary.main,
+    backgroundColor: Colors.primary.light + '20',
+  },
+  createAccountText: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.primary.main,
+    fontWeight: Typography.weights.medium,
+    marginLeft: Spacing.xs,
   },
   section: {
     marginHorizontal: Spacing.lg,

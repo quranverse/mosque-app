@@ -57,21 +57,45 @@ class DatabaseInitializer {
   async createIndexes() {
     try {
       console.log('📊 Creating database indexes...');
-      
-      // Create User indexes
-      await User.createIndexes();
-      console.log('  ✅ User indexes created');
-      
+
+      // Create User indexes with error handling for existing indexes
+      try {
+        await User.createIndexes();
+        console.log('  ✅ User indexes created');
+      } catch (error) {
+        if (error.code === 86) { // IndexKeySpecsConflict
+          console.log('  ⚠️ User indexes already exist, skipping...');
+        } else {
+          throw error;
+        }
+      }
+
       // Create Session indexes
-      await Session.createIndexes();
-      console.log('  ✅ Session indexes created');
-      
+      try {
+        await Session.createIndexes();
+        console.log('  ✅ Session indexes created');
+      } catch (error) {
+        if (error.code === 86) { // IndexKeySpecsConflict
+          console.log('  ⚠️ Session indexes already exist, skipping...');
+        } else {
+          throw error;
+        }
+      }
+
       // Create Translation indexes
-      await Translation.createIndexes();
-      console.log('  ✅ Translation indexes created');
-      
-      console.log('✅ All database indexes created successfully');
-      
+      try {
+        await Translation.createIndexes();
+        console.log('  ✅ Translation indexes created');
+      } catch (error) {
+        if (error.code === 86) { // IndexKeySpecsConflict
+          console.log('  ⚠️ Translation indexes already exist, skipping...');
+        } else {
+          throw error;
+        }
+      }
+
+      console.log('✅ All database indexes processed successfully');
+
     } catch (error) {
       console.error('❌ Failed to create indexes:', error);
       throw error;
@@ -123,8 +147,6 @@ class DatabaseInitializer {
           type: 'Point',
           coordinates: [-74.0060, 40.7128] // [longitude, latitude] - NYC
         },
-        madhab: 'Hanafi',
-        prayerTimeMethod: 'MoonsightingCommittee',
         servicesOffered: ['Live Translation', 'Friday Speeches', 'Educational Programs'],
         languagesSupported: ['Arabic', 'English', 'Urdu'],
         capacity: 500,
@@ -147,8 +169,6 @@ class DatabaseInitializer {
           type: 'Point',
           coordinates: [-73.9851, 40.7589] // Brooklyn
         },
-        madhab: 'Shafi',
-        prayerTimeMethod: 'MuslimWorldLeague',
         servicesOffered: ['Live Translation', 'Youth Programs', 'Community Events'],
         languagesSupported: ['Arabic', 'English', 'Turkish'],
         capacity: 300,
@@ -170,8 +190,6 @@ class DatabaseInitializer {
           type: 'Point',
           coordinates: [-73.8740, 40.7282] // Queens
         },
-        madhab: 'Hanafi',
-        prayerTimeMethod: 'NorthAmerica',
         servicesOffered: ['Live Translation', 'Friday Speeches', 'Women\'s Programs'],
         languagesSupported: ['Arabic', 'English', 'Bengali', 'Urdu'],
         capacity: 800,
@@ -193,7 +211,7 @@ class DatabaseInitializer {
   async createSampleIndividualUsers() {
     const individualData = [
       {
-        email: 'individual_device_001@temp.local',
+        email: 'individual.device.001@example.com',
         password: 'random-password-001',
         userType: 'individual',
         isEmailVerified: true,
@@ -204,7 +222,7 @@ class DatabaseInitializer {
         }
       },
       {
-        email: 'individual_device_002@temp.local',
+        email: 'individual.device.002@example.com',
         password: 'random-password-002',
         userType: 'individual',
         isEmailVerified: true,

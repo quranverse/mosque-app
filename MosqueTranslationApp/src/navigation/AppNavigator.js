@@ -6,18 +6,21 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { View, ActivityIndicator, Text } from 'react-native';
 
 // Import screens
-import HomeScreen from '../screens/HomeScreen/HomeScreen';
 import PrayerTimesScreen from '../screens/PrayerTimesScreen/PrayerTimesScreen';
 import QiblaScreen from '../screens/QiblaScreen/QiblaScreen';
 import TranslationScreen from '../screens/TranslationScreen/TranslationScreen';
-import SpeechLibraryScreen from '../screens/SpeechLibraryScreen/SpeechLibraryScreen';
-import MosqueControlScreen from '../screens/MosqueControlScreen/MosqueControlScreen';
 
 // Import new authentication screens
 import WelcomeScreen from '../screens/WelcomeScreen/WelcomeScreen';
+import LoginScreen from '../screens/LoginScreen/LoginScreen';
 import MosqueRegistrationScreen from '../screens/MosqueRegistrationScreen/MosqueRegistrationScreen';
 import IndividualOnboardingScreen from '../screens/IndividualOnboardingScreen/IndividualOnboardingScreen';
 import SettingsScreen from '../screens/SettingsScreen/SettingsScreen';
+import HorizontalTranslationScreen from '../screens/HorizontalTranslationScreen/HorizontalTranslationScreen';
+import MosqueManagementScreen from '../screens/MosqueManagementScreen';
+import BroadcastingScreen from '../screens/BroadcastingScreen';
+import AnnouncementsScreen from '../screens/AnnouncementsScreen';
+import ConnectionTestScreen from '../screens/ConnectionTestScreen';
 
 // Import services
 import AuthService from '../services/AuthService/AuthService';
@@ -43,6 +46,22 @@ const MainTabNavigator = () => {
   }, []);
 
   const isMosqueAdmin = currentUser && AuthService.isMosqueAdmin();
+  const isAnonymous = currentUser && AuthService.isAnonymous();
+
+  // Ensure we have valid components with fallbacks
+  const MainContentComponent = (isMosqueAdmin && BroadcastingScreen) ? BroadcastingScreen : TranslationScreen;
+  const mainContentLabel = isMosqueAdmin ? 'Broadcasting' : 'Translation';
+  const mainContentIcon = isMosqueAdmin ? 'mic' : 'translate';
+
+  // Safety check - if components are not loaded, show loading
+  if (!TranslationScreen || !BroadcastingScreen) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={Colors.primary.main} />
+        <Text>Loading...</Text>
+      </View>
+    );
+  }
 
   return (
     <Tab.Navigator
@@ -79,32 +98,103 @@ const MainTabNavigator = () => {
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Prayer Times" component={PrayerTimesScreen} />
-      <Tab.Screen name="Qibla" component={QiblaScreen} />
-      <Tab.Screen name="Translation" component={TranslationScreen} />
-      <Tab.Screen name="Speeches" component={SpeechLibraryScreen} />
+      {/* Prayer Times - Default tab for all users */}
+      <Tab.Screen
+        name="Prayer Times"
+        component={PrayerTimesScreen}
+        options={{
+          tabBarLabel: 'Prayer Times',
+          tabBarIcon: ({ color, size }) => (
+            <Icon name="access-time" size={size} color={color} />
+          ),
+        }}
+      />
 
-      {/* Show Mosque Control tab only for mosque admins */}
-      {isMosqueAdmin && (
-        <Tab.Screen
-          name="Mosque Control"
-          component={MosqueControlScreen}
-          options={{
-            tabBarLabel: 'Control',
-          }}
-        />
-      )}
+      {/* Main Content Tab - Shows different content based on user type */}
+      <Tab.Screen
+        name="MainContent"
+        component={MainContentComponent}
+        options={{
+          tabBarLabel: mainContentLabel,
+          tabBarIcon: ({ color, size }) => (
+            <Icon name={mainContentIcon} size={size} color={color} />
+          ),
+        }}
+      />
 
-      {/* Settings tab for all users */}
+      {/* Announcements for all users */}
+      <Tab.Screen
+        name="Announcements"
+        component={AnnouncementsScreen}
+        options={{
+          tabBarLabel: 'Announcements',
+          tabBarIcon: ({ color, size }) => (
+            <Icon name="announcement" size={size} color={color} />
+          ),
+        }}
+      />
+
+      {/* Qibla for all users */}
+      <Tab.Screen
+        name="Qibla"
+        component={QiblaScreen}
+        options={{
+          tabBarLabel: 'Qibla',
+          tabBarIcon: ({ color, size }) => (
+            <Icon name="explore" size={size} color={color} />
+          ),
+        }}
+      />
+
+      {/* Settings for all users */}
       <Tab.Screen
         name="Settings"
         component={SettingsScreen}
         options={{
           tabBarLabel: 'Settings',
+          tabBarIcon: ({ color, size }) => (
+            <Icon name="settings" size={size} color={color} />
+          ),
         }}
       />
     </Tab.Navigator>
+  );
+};
+
+// Main stack navigator that includes tabs and modal screens
+const MainStackNavigator = () => {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      <Stack.Screen name="MainTabs" component={MainTabNavigator} />
+      <Stack.Screen
+        name="HorizontalTranslation"
+        component={HorizontalTranslationScreen}
+        options={{
+          presentation: 'fullScreenModal',
+          gestureEnabled: false,
+        }}
+      />
+      <Stack.Screen
+        name="MosqueManagement"
+        component={MosqueManagementScreen}
+        options={{
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="ConnectionTest"
+        component={ConnectionTestScreen}
+        options={{
+          presentation: 'modal',
+          headerShown: true,
+          title: 'Connection Test',
+        }}
+      />
+    </Stack.Navigator>
   );
 };
 
@@ -117,6 +207,7 @@ const AuthStackNavigator = () => {
       }}
     >
       <Stack.Screen name="Welcome" component={WelcomeScreen} />
+      <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="MosqueRegistration" component={MosqueRegistrationScreen} />
       <Stack.Screen name="IndividualOnboarding" component={IndividualOnboardingScreen} />
     </Stack.Navigator>
@@ -140,16 +231,16 @@ const AppNavigator = () => {
       // Initialize auth service
       await AuthService.initialize();
 
-      // Check if user is authenticated
-      const authenticated = AuthService.isAuthenticated();
-      setIsAuthenticated(authenticated);
+      // Check if user has any session (authenticated or anonymous)
+      const hasUser = AuthService.hasUser();
+      setIsAuthenticated(hasUser);
 
       // Check if this is first time user
       const firstTime = await AuthService.isFirstTimeUser();
       setIsFirstTime(firstTime);
 
-      // If user is authenticated but it's first time, mark as not first time
-      if (authenticated && firstTime) {
+      // If user has session but it's first time, mark as not first time
+      if (hasUser && firstTime) {
         await AuthService.markNotFirstTime();
         setIsFirstTime(false);
       }
@@ -190,7 +281,7 @@ const AppNavigator = () => {
   return (
     <NavigationContainer>
       {isAuthenticated ? (
-        <MainTabNavigator />
+        <MainStackNavigator />
       ) : (
         <AuthStackNavigator />
       )}

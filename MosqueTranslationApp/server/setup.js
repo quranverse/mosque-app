@@ -186,8 +186,6 @@ LOG_LEVEL=debug
       
       // Test connection
       await mongoose.connect(this.config.MONGODB_URI, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
         serverSelectionTimeoutMS: 10000 // 10 second timeout
       });
 

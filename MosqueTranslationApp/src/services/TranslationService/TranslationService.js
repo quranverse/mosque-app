@@ -275,31 +275,15 @@ class TranslationService {
 
   static async getAvailableSessions(location) {
     try {
-      // Mock implementation - in real app, this would query the server
-      const mockSessions = [
-        {
-          id: 'session1',
-          mosqueId: 'mosque1',
-          mosqueName: 'Central Mosque',
-          isActive: true,
-          languages: ['English'],
-          participantCount: 45,
-          startedAt: new Date(Date.now() - 600000), // 10 minutes ago
-          distance: 0.5,
-        },
-        {
-          id: 'session2',
-          mosqueId: 'mosque2',
-          mosqueName: 'Masjid Al-Noor',
-          isActive: true,
-          languages: ['English', 'Urdu'],
-          participantCount: 23,
-          startedAt: new Date(Date.now() - 300000), // 5 minutes ago
-          distance: 2.1,
-        },
-      ];
+      // Use the real API endpoint
+      const { default: ApiService } = await import('../ApiService');
+      const response = await ApiService.get('/sessions/active');
 
-      return mockSessions;
+      if (response.success) {
+        return response.sessions || [];
+      }
+
+      return [];
     } catch (error) {
       console.error('Error getting available sessions:', error);
       return [];
@@ -375,19 +359,7 @@ class TranslationService {
     this.listeners.clear();
   }
 
-  static async simulateTranslation(arabicText) {
-    // Mock translation for development
-    const mockTranslations = {
-      'بسم الله الرحمن الرحيم': 'In the name of Allah, the Most Gracious, the Most Merciful',
-      'الحمد لله رب العالمين': 'All praise is due to Allah, Lord of all the worlds',
-      'الرحمن الرحيم': 'The Most Gracious, the Most Merciful',
-      'مالك يوم الدين': 'Master of the Day of Judgment',
-      'إياك نعبد وإياك نستعين': 'You alone we worship, and You alone we ask for help',
-      'اهدنا الصراط المستقيم': 'Guide us to the straight path',
-    };
 
-    return mockTranslations[arabicText] || `Translation of: ${arabicText}`;
-  }
 }
 
 export default TranslationService;

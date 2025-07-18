@@ -15,7 +15,7 @@ class EmailService {
         return;
       }
 
-      this.transporter = nodemailer.createTransporter({
+      this.transporter = nodemailer.createTransport({
         service: config.email.service,
         auth: {
           user: config.email.user,

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import IslamicInput from '../../../components/Common/IslamicInput';
+import IslamicDropdown from '../../../components/Common/IslamicDropdown';
 import { Colors, Typography, Spacing, BorderRadius } from '../../../utils/theme';
 
 const Step4Details = ({ data, onUpdate }) => {
@@ -89,6 +90,8 @@ const Step4Details = ({ data, onUpdate }) => {
             </View>
           </View>
         </View>
+
+
 
         {/* Brief History */}
         <IslamicInput

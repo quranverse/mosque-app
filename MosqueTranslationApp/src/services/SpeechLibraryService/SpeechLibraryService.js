@@ -6,122 +6,17 @@ class SpeechLibraryService {
   static FAVORITES_KEY = 'favorite_speeches';
   static DOWNLOADS_KEY = 'downloaded_speeches';
 
-  // Mock data for development
-  static mockSpeeches = [
-    {
-      id: 'speech_001',
-      title: 'The Importance of Prayer in Daily Life',
-      speaker: 'Imam Abdullah Rahman',
-      mosqueId: 'mosque1',
-      mosqueName: 'Central Mosque',
-      date: '2024-01-12',
-      duration: 1800, // 30 minutes in seconds
-      language: 'Arabic',
-      translationLanguages: ['English', 'Urdu'],
-      category: 'Spiritual Development',
-      tags: ['prayer', 'salah', 'spirituality', 'daily life'],
-      description: 'A comprehensive discussion about the significance of the five daily prayers and how they shape our spiritual and moral character.',
-      audioUrl: 'https://example.com/speeches/speech_001.mp3',
-      transcriptUrl: 'https://example.com/speeches/speech_001_transcript.txt',
-      translationUrls: {
-        English: 'https://example.com/speeches/speech_001_en.txt',
-        Urdu: 'https://example.com/speeches/speech_001_ur.txt',
-      },
-      thumbnailUrl: 'https://example.com/speeches/speech_001_thumb.jpg',
-      views: 1250,
-      likes: 89,
-      isDownloaded: false,
-      isFavorite: false,
-    },
-    {
-      id: 'speech_002',
-      title: 'Understanding the Quran: Surah Al-Fatiha',
-      speaker: 'Dr. Fatima Al-Zahra',
-      mosqueId: 'mosque2',
-      mosqueName: 'Masjid Al-Noor',
-      date: '2024-01-05',
-      duration: 2100, // 35 minutes
-      language: 'Arabic',
-      translationLanguages: ['English', 'French'],
-      category: 'Quranic Studies',
-      tags: ['quran', 'al-fatiha', 'tafsir', 'understanding'],
-      description: 'An in-depth explanation of Surah Al-Fatiha, its meanings, and its significance in Islamic worship.',
-      audioUrl: 'https://example.com/speeches/speech_002.mp3',
-      transcriptUrl: 'https://example.com/speeches/speech_002_transcript.txt',
-      translationUrls: {
-        English: 'https://example.com/speeches/speech_002_en.txt',
-        French: 'https://example.com/speeches/speech_002_fr.txt',
-      },
-      thumbnailUrl: 'https://example.com/speeches/speech_002_thumb.jpg',
-      views: 980,
-      likes: 67,
-      isDownloaded: false,
-      isFavorite: false,
-    },
-    {
-      id: 'speech_003',
-      title: 'The Month of Ramadan: Preparation and Reflection',
-      speaker: 'Sheikh Omar Hassan',
-      mosqueId: 'mosque1',
-      mosqueName: 'Central Mosque',
-      date: '2024-02-23',
-      duration: 1650, // 27.5 minutes
-      language: 'Arabic',
-      translationLanguages: ['English', 'Turkish'],
-      category: 'Seasonal',
-      tags: ['ramadan', 'fasting', 'preparation', 'reflection'],
-      description: 'Guidance on how to prepare spiritually and physically for the holy month of Ramadan.',
-      audioUrl: 'https://example.com/speeches/speech_003.mp3',
-      transcriptUrl: 'https://example.com/speeches/speech_003_transcript.txt',
-      translationUrls: {
-        English: 'https://example.com/speeches/speech_003_en.txt',
-        Turkish: 'https://example.com/speeches/speech_003_tr.txt',
-      },
-      thumbnailUrl: 'https://example.com/speeches/speech_003_thumb.jpg',
-      views: 2100,
-      likes: 156,
-      isDownloaded: false,
-      isFavorite: false,
-    },
-    {
-      id: 'speech_004',
-      title: 'Building Strong Family Bonds in Islam',
-      speaker: 'Ustadha Aisha Mahmoud',
-      mosqueId: 'mosque3',
-      mosqueName: 'Community Islamic Center',
-      date: '2024-02-16',
-      duration: 1920, // 32 minutes
-      language: 'Arabic',
-      translationLanguages: ['English', 'Bengali'],
-      category: 'Family & Society',
-      tags: ['family', 'relationships', 'islamic values', 'parenting'],
-      description: 'Practical advice on strengthening family relationships based on Islamic principles and values.',
-      audioUrl: 'https://example.com/speeches/speech_004.mp3',
-      transcriptUrl: 'https://example.com/speeches/speech_004_transcript.txt',
-      translationUrls: {
-        English: 'https://example.com/speeches/speech_004_en.txt',
-        Bengali: 'https://example.com/speeches/speech_004_bn.txt',
-      },
-      thumbnailUrl: 'https://example.com/speeches/speech_004_thumb.jpg',
-      views: 1450,
-      likes: 98,
-      isDownloaded: false,
-      isFavorite: false,
-    },
-  ];
+  // Removed mock data - use real API instead
 
   static async getAllSpeeches() {
     try {
-      // In a real app, this would fetch from a server
-      // For now, return mock data with local storage preferences
-      const favorites = await this.getFavoriteSpeeches();
-      const downloads = await this.getDownloadedSpeeches();
-      
-      return this.mockSpeeches.map(speech => ({
-        ...speech,
-        isFavorite: favorites.includes(speech.id),
-        isDownloaded: downloads.includes(speech.id),
-      }));
+      // TODO: Implement real API call to fetch speeches
+      // const { default: ApiService } = await import('../ApiService');
+      // const response = await ApiService.get('/speeches');
+      // return response.speeches || [];
+
+      // For now, return empty array until API is implemented
+      return [];
     } catch (error) {
       console.error('Error getting all speeches:', error);
       return [];

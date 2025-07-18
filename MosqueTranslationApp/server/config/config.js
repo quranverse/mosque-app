@@ -3,15 +3,15 @@ require('dotenv').config();
 
 const config = {
   // Server Configuration
-  port: process.env.PORT || 3001,
+  port: process.env.PORT || 8080,
   nodeEnv: process.env.NODE_ENV || 'development',
   
   // Database Configuration
   database: {
     uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/mosque-translation-app',
     options: {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
+      // Removed deprecated options: useNewUrlParser and useUnifiedTopology
+      // These are no longer needed in MongoDB driver v4.0.0+
     }
   },
   
@@ -48,8 +48,6 @@ const config = {
   
   // Islamic Features Configuration
   islamic: {
-    defaultCalculationMethod: 'MoonsightingCommittee',
-    supportedMadhabs: ['Hanafi', 'Shafi'],
     supportedLanguages: [
       // Major Islamic Languages
       'Arabic', 'English', 'Urdu', 'Turkish', 'Persian', 'Malay', 'Indonesian',
@@ -94,18 +92,7 @@ const config = {
       'Albanian': { code: 'sq', rtl: false, script: 'Latin', family: 'Indo-European' },
       'Bosnian': { code: 'bs', rtl: false, script: 'Latin', family: 'Slavic' }
     },
-    prayerMethods: [
-      'MuslimWorldLeague',
-      'Egyptian',
-      'Karachi',
-      'UmmAlQura',
-      'Dubai',
-      'MoonsightingCommittee',
-      'NorthAmerica',
-      'Kuwait',
-      'Qatar',
-      'Singapore'
-    ]
+
   },
   
   // Notification Configuration

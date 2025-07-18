@@ -16,7 +16,9 @@ import { API_BASE_URL } from '../../config/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MultiLanguageTranslationView from '../../components/Translation/MultiLanguageTranslationView';
 import VoiceRecognitionComponent from '../../components/Audio/VoiceRecognitionComponent';
+import LiveBroadcastList from '../../components/Translation/LiveBroadcastList';
 import multiLanguageTranslationService from '../../services/MultiLanguageTranslationService';
+import AuthService from '../../services/AuthService/AuthService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -30,6 +32,8 @@ const TranslationScreen = ({ navigation, route }) => {
   const [userType, setUserType] = useState('individual');
   const [loading, setLoading] = useState(true);
   const [showTranslationView, setShowTranslationView] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(height)).current;
@@ -55,11 +59,10 @@ const TranslationScreen = ({ navigation, route }) => {
       // Initialize multi-language translation service
       await multiLanguageTranslationService.initialize();
 
-      // Get user type from storage
-      const storedUserType = await AsyncStorage.getItem('userType');
-      if (storedUserType) {
-        setUserType(storedUserType);
-      }
+      // Get user type from AuthService
+      const currentUser = AuthService.getCurrentUser();
+      const currentUserType = currentUser?.type || 'individual';
+      setUserType(currentUserType);
 
       // Load available mosques and sessions
       await Promise.all([
@@ -235,6 +238,36 @@ const TranslationScreen = ({ navigation, route }) => {
     hideTranslationViewAnimated();
   };
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        loadAvailableMosques(),
+        loadActiveSessions()
+      ]);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleJoinBroadcast = (broadcast) => {
+    // Create a mosque object from broadcast data
+    const mosque = {
+      id: broadcast.mosqueId,
+      name: broadcast.mosqueName,
+      address: broadcast.address,
+      hasLiveTranslation: broadcast.isLive,
+    };
+
+    if (broadcast.isLive && broadcast.sessionId) {
+      connectToSession(broadcast.sessionId, mosque);
+    } else {
+      Alert.alert('Error', 'This broadcast is not currently available.');
+    }
+  };
+
   const showTranslationViewAnimated = () => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -306,8 +339,19 @@ const TranslationScreen = ({ navigation, route }) => {
       </View>
 
       {!isConnected ? (
-        /* Mosque and Session Selection */
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        /* Show different content based on user type */
+        userType === AuthService.USER_TYPES.INDIVIDUAL || userType === AuthService.USER_TYPES.ANONYMOUS ? (
+          /* Individual User: Enhanced Live Broadcast List */
+          <LiveBroadcastList
+            onJoinBroadcast={handleJoinBroadcast}
+            userLocation={userLocation}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            navigation={navigation}
+          />
+        ) : (
+          /* Mosque User: Original mosque and session selection */
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {/* Active Sessions */}
           {activeSessions.length > 0 && (
             <View style={styles.section}>
@@ -460,11 +504,12 @@ const TranslationScreen = ({ navigation, route }) => {
             ))}
           </View>
         </ScrollView>
+        )
       ) : (
         /* Multi-Language Translation View with Voice Recognition */
         <View style={{ flex: 1 }}>
           {/* Voice Recognition Component (Imam/Mosque Admin Only) */}
-          {userType === 'mosque' && (
+          {userType === AuthService.USER_TYPES.MOSQUE_ADMIN && (
             <VoiceRecognitionComponent
               sessionId={selectedSession?.sessionId}
               socket={socket}

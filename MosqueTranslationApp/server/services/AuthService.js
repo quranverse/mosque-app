@@ -17,8 +17,6 @@ class AuthService {
         website,
         latitude,
         longitude,
-        madhab,
-        prayerTimeMethod,
         servicesOffered,
         languagesSupported,
         capacity,
@@ -44,8 +42,6 @@ class AuthService {
           type: 'Point',
           coordinates: [longitude, latitude]
         },
-        madhab,
-        prayerTimeMethod,
         servicesOffered: servicesOffered || [],
         languagesSupported: languagesSupported || ['Arabic', 'English'],
         capacity,

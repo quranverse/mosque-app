@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,23 +8,79 @@ import {
   Alert,
   Switch,
   TextInput,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
-const MosqueControlScreen = () => {
+const MosqueControlScreen = ({ navigation }) => {
   const [isTranslationActive, setIsTranslationActive] = useState(false);
   const [selectedLanguages, setSelectedLanguages] = useState(['English']);
   const [connectedListeners, setConnectedListeners] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [sessionDuration, setSessionDuration] = useState(0);
   const [mosqueInfo, setMosqueInfo] = useState({
     name: 'My Mosque',
     address: '123 Main Street',
     phone: '+1234567890',
   });
 
+  // Animation refs
+  const micPulseAnim = useRef(new Animated.Value(1)).current;
+  const audioLevelAnim = useRef(new Animated.Value(0)).current;
+
   const availableLanguages = [
-    'English', 'Arabic', 'Urdu', 'Turkish', 'French', 
+    'English', 'Arabic', 'Urdu', 'Turkish', 'French',
     'Spanish', 'German', 'Indonesian', 'Malay', 'Bengali'
   ];
+
+  // Effects for animations and timers
+  useEffect(() => {
+    let interval;
+    if (isTranslationActive && isRecording) {
+      interval = setInterval(() => {
+        setSessionDuration(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isTranslationActive, isRecording]);
+
+  useEffect(() => {
+    if (isRecording) {
+      // Animate microphone pulse
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(micPulseAnim, {
+            toValue: 1.2,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(micPulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      // Simulate audio level changes
+      const audioInterval = setInterval(() => {
+        const newLevel = Math.random() * 100;
+        setAudioLevel(newLevel);
+        Animated.timing(audioLevelAnim, {
+          toValue: newLevel,
+          duration: 100,
+          useNativeDriver: false,
+        }).start();
+      }, 150);
+
+      return () => clearInterval(audioInterval);
+    } else {
+      micPulseAnim.setValue(1);
+      audioLevelAnim.setValue(0);
+    }
+  }, [isRecording]);
 
   const toggleTranslation = () => {
     if (!isTranslationActive) {
@@ -71,10 +127,133 @@ const MosqueControlScreen = () => {
     }
   };
 
+  const startRecording = () => {
+    if (!isTranslationActive) {
+      Alert.alert(
+        'Translation Not Active',
+        'Please start the translation broadcast first.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Start Recording',
+      'This will start recording your voice for live translation.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start',
+          onPress: () => {
+            setIsRecording(true);
+            setSessionDuration(0);
+          }
+        },
+      ]
+    );
+  };
+
+  const stopRecording = () => {
+    Alert.alert(
+      'Stop Recording',
+      'This will stop the voice recording.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Stop',
+          onPress: () => {
+            setIsRecording(false);
+          }
+        },
+      ]
+    );
+  };
+
+  const formatDuration = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const renderMicrophoneInterface = () => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Microphone Broadcasting</Text>
+
+      <View style={styles.micCard}>
+        {/* Microphone Button */}
+        <View style={styles.micContainer}>
+          <Animated.View style={[
+            styles.micButtonContainer,
+            { transform: [{ scale: micPulseAnim }] }
+          ]}>
+            <TouchableOpacity
+              style={[
+                styles.micButton,
+                isRecording && styles.micButtonActive
+              ]}
+              onPress={isRecording ? stopRecording : startRecording}
+              disabled={!isTranslationActive}
+            >
+              <Icon
+                name={isRecording ? "stop" : "mic"}
+                size={40}
+                color={!isTranslationActive ? "#ccc" : isRecording ? "#fff" : "#2E7D32"}
+              />
+            </TouchableOpacity>
+          </Animated.View>
+
+          <Text style={styles.micLabel}>
+            {!isTranslationActive
+              ? 'Start broadcast first'
+              : isRecording
+                ? 'Recording...'
+                : 'Tap to start recording'
+            }
+          </Text>
+        </View>
+
+        {/* Audio Level Indicator */}
+        {isRecording && (
+          <View style={styles.audioLevelContainer}>
+            <Text style={styles.audioLevelLabel}>Audio Level</Text>
+            <View style={styles.audioLevelBar}>
+              <Animated.View
+                style={[
+                  styles.audioLevelFill,
+                  {
+                    width: audioLevelAnim.interpolate({
+                      inputRange: [0, 100],
+                      outputRange: ['0%', '100%'],
+                      extrapolate: 'clamp',
+                    })
+                  }
+                ]}
+              />
+            </View>
+          </View>
+        )}
+
+        {/* Session Info */}
+        {isRecording && (
+          <View style={styles.sessionInfo}>
+            <View style={styles.sessionItem}>
+              <Icon name="timer" size={16} color="#4CAF50" />
+              <Text style={styles.sessionText}>Duration: {formatDuration(sessionDuration)}</Text>
+            </View>
+            <View style={styles.sessionItem}>
+              <Icon name="people" size={16} color="#4CAF50" />
+              <Text style={styles.sessionText}>{connectedListeners} listening</Text>
+            </View>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+
   const renderTranslationControl = () => (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Live Translation Control</Text>
-      
+
       <View style={styles.controlCard}>
         <View style={styles.controlHeader}>
           <View>
@@ -90,7 +269,7 @@ const MosqueControlScreen = () => {
             thumbColor={isTranslationActive ? '#2E7D32' : '#f4f3f4'}
           />
         </View>
-        
+
         {isTranslationActive && (
           <View style={styles.liveStats}>
             <View style={styles.statItem}>
@@ -215,6 +394,7 @@ const MosqueControlScreen = () => {
       </View>
 
       {renderTranslationControl()}
+      {renderMicrophoneInterface()}
       {renderLanguageSelection()}
       {renderMosqueInfo()}
       {renderQuickActions()}
@@ -414,6 +594,89 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
     textAlign: 'center',
+  },
+  // Microphone interface styles
+  micCard: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    alignItems: 'center',
+  },
+  micContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  micButtonContainer: {
+    marginBottom: 10,
+  },
+  micButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 3,
+    borderColor: '#2E7D32',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  micButtonActive: {
+    backgroundColor: '#F44336',
+    borderColor: '#D32F2F',
+  },
+  micLabel: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 5,
+  },
+  audioLevelContainer: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  audioLevelLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 5,
+    textAlign: 'center',
+  },
+  audioLevelBar: {
+    height: 6,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  audioLevelFill: {
+    height: '100%',
+    backgroundColor: '#4CAF50',
+    borderRadius: 3,
+  },
+  sessionInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  sessionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sessionText: {
+    fontSize: 12,
+    color: '#4CAF50',
+    marginLeft: 5,
+    fontWeight: '500',
   },
 });
 

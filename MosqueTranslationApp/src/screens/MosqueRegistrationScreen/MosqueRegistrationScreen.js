@@ -40,6 +40,7 @@ const MosqueRegistrationScreen = ({ navigation }) => {
     city: '',
     zipCode: '',
     country: '',
+    phone: '',
     website: '',
     
     // Step 3: Facilities & Services
@@ -72,6 +73,12 @@ const MosqueRegistrationScreen = ({ navigation }) => {
       interior: null,
       logo: null,
     },
+
+    // Additional backend fields
+    servicesOffered: ['Live Translation'],
+    languagesSupported: ['Arabic', 'English'],
+    latitude: 0,
+    longitude: 0,
   });
 
   const scrollViewRef = useRef(null);
@@ -129,37 +136,44 @@ const MosqueRegistrationScreen = ({ navigation }) => {
   };
 
   const validateStep2 = () => {
-    const { mosqueName, address, city, zipCode, country } = registrationData;
-    
-    if (!mosqueName || !address || !city || !zipCode || !country) {
+    const { mosqueName, address, city, zipCode, country, phone } = registrationData;
+
+    if (!mosqueName || !address || !city || !zipCode || !country || !phone) {
       Alert.alert('Error', 'Please fill in all required fields');
       return false;
     }
-    
+
+    // Basic phone validation (digits only, 10+ characters)
+    const phoneDigits = phone.replace(/\D/g, '');
+    if (phoneDigits.length < 10) {
+      Alert.alert('Error', 'Please enter a valid phone number');
+      return false;
+    }
+
     return true;
   };
 
   const validateStep4 = () => {
     const { constructionYear, capacityWomen, capacityMen } = registrationData;
-    
+
     if (!constructionYear || !capacityWomen || !capacityMen) {
       Alert.alert('Error', 'Please fill in all required fields');
       return false;
     }
-    
+
     const year = parseInt(constructionYear);
     const currentYear = new Date().getFullYear();
-    
+
     if (isNaN(year) || year < 1000 || year > currentYear) {
       Alert.alert('Error', 'Please enter a valid construction year');
       return false;
     }
-    
+
     if (isNaN(parseInt(capacityWomen)) || isNaN(parseInt(capacityMen))) {
       Alert.alert('Error', 'Please enter valid capacity numbers');
       return false;
     }
-    
+
     return true;
   };
 

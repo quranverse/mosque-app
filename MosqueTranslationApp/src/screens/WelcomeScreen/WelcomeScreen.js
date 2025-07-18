@@ -7,10 +7,12 @@ import {
   Dimensions,
   StatusBar,
   Animated,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import IslamicButton from '../../components/Common/IslamicButton';
+import AuthService from '../../services/AuthService/AuthService';
 import { Colors, Typography, Spacing, BorderRadius } from '../../utils/theme';
 
 const { width, height } = Dimensions.get('window');
@@ -39,8 +41,20 @@ const WelcomeScreen = ({ navigation }) => {
     navigation.navigate('MosqueRegistration');
   };
 
-  const handleContinueAsIndividual = () => {
-    navigation.navigate('IndividualOnboarding');
+  const handleContinueAsIndividual = async () => {
+    // Set up anonymous user and navigate to main app
+    try {
+      await AuthService.setupAnonymousUser();
+      // Navigation will be handled automatically by AppNavigator
+      // when the auth state changes to anonymous user
+    } catch (error) {
+      console.error('Error setting up anonymous user:', error);
+      Alert.alert('Error', 'Failed to continue. Please try again.');
+    }
+  };
+
+  const handleSignIn = () => {
+    navigation.navigate('Login');
   };
 
   return (
@@ -182,8 +196,30 @@ const WelcomeScreen = ({ navigation }) => {
             </View>
           </Animated.View>
 
+          {/* Sign In Section */}
+          <Animated.View
+            style={[
+              styles.signInSection,
+              {
+                opacity: fadeAnim,
+              },
+            ]}
+          >
+            <Text style={styles.signInText}>
+              Already have a mosque account?
+            </Text>
+            <IslamicButton
+              title="Sign In"
+              onPress={handleSignIn}
+              variant="outline"
+              size="md"
+              icon="login"
+              style={styles.signInButton}
+            />
+          </Animated.View>
+
           {/* Footer */}
-          <Animated.View 
+          <Animated.View
             style={[
               styles.footer,
               {
@@ -351,6 +387,24 @@ const styles = StyleSheet.create({
   },
   optionButton: {
     marginTop: Spacing.md,
+  },
+  signInSection: {
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    marginTop: Spacing.lg,
+  },
+  signInText: {
+    fontSize: Typography.sizes.base,
+    color: Colors.text.inverse,
+    textAlign: 'center',
+    marginBottom: Spacing.md,
+    opacity: 0.9,
+  },
+  signInButton: {
+    minWidth: 120,
   },
   footer: {
     paddingHorizontal: Spacing.xl,

@@ -64,41 +64,18 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // API Routes
+const userRoutes = require('./routes/user');
+const sessionRoutes = require('./routes/sessions');
 app.use('/api/auth', authRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/sessions', sessionRoutes);
 app.use('/api/translation', translationRoutes);
 
 // In-memory storage for development (will be replaced with database)
 const activeSessions = new Map();
 const connectedClients = new Map();
 
-// Enhanced mosque data with authentication support
-const mockMosques = [
-  {
-    id: 'mosque1',
-    name: 'Central Mosque',
-    location: { lat: 40.7128, lng: -74.0060 },
-    address: '123 Main Street, New York, NY',
-    isActive: false,
-    followers: 150,
-    hasAccount: true,
-    accountId: null // Will be populated from database
-  },
-  {
-    id: 'mosque2',
-    name: 'Masjid Al-Noor',
-    location: { lat: 40.7589, lng: -73.9851 },
-    address: '456 Oak Avenue, New York, NY',
-    isActive: false,
-    followers: 203,
-    hasAccount: true,
-    accountId: null
-  },
-];
-
-const mosques = new Map();
-mockMosques.forEach(mosque => {
-  mosques.set(mosque.id, mosque);
-});
+// Remove mock data - using real database now
 
 // Socket.IO connection handling with authentication
 io.on('connection', (socket) => {
@@ -731,7 +708,6 @@ app.get('/api/status', async (req, res) => {
       timestamp: new Date().toISOString(),
       connectedClients: connectedClients.size,
       activeSessions: activeSessions.size,
-      registeredMosques: mosques.size,
       uptime: process.uptime(),
       database: {
         ...dbHealth,
