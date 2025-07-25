@@ -22,6 +22,9 @@ const VoiceRecognitionService = require('./services/VoiceRecognitionService');
 // Import middleware
 const { optionalAuth } = require('./middleware/auth');
 
+// Import models
+const User = require('./models/User');
+
 const app = express();
 const server = http.createServer(app);
 
@@ -725,94 +728,218 @@ app.get('/api/mosques', optionalAuth, async (req, res) => {
   try {
     const { lat, lng, radius = 10 } = req.query;
 
-    // For now, return hardcoded mosque data to fix the immediate issue
-    // TODO: Fix the database query issue later
-    const hardcodedMosques = [
-      {
-        id: '687979e29bd27fe81941daa2',
-        name: 'Central Mosque',
-        address: '123 Main Street, New York, NY 10001',
-        location: {
-          lat: 40.7128,
-          lng: -74.0060
-        },
-        phone: '+1-555-0123',
-        website: 'https://centralmosque.org',
-        madhab: 'Sunni',
-        servicesOffered: ['Live Translation', 'Prayer Times', 'Islamic Education'],
-        languagesSupported: ['Arabic', 'English', 'Urdu'],
-        capacity: 500,
-        facilities: ['Parking', 'Ablution Area', 'Women\'s Section', 'Library'],
-        photos: {},
-        followers: 150,
-        hasLiveTranslation: true,
-        distance: lat && lng ? calculateDistance(lat, lng, 40.7128, -74.0060) : 0,
-        hasAccount: true,
-        isFollowed: req.user?.userType === 'individual' && req.user?.followedMosques?.some(f => f.mosqueId.toString() === '687979e29bd27fe81941daa2')
-      },
-      {
-        id: '687979e29bd27fe81941daa3',
-        name: 'Islamic Center of Queens',
-        address: '789 Queens Boulevard, Queens, NY 11373',
-        location: {
-          lat: 40.7282,
-          lng: -73.7949
-        },
-        phone: '+1-555-0456',
-        website: 'https://icqueens.org',
-        madhab: 'Sunni',
-        servicesOffered: ['Live Translation', 'Community Events', 'Youth Programs'],
-        languagesSupported: ['Arabic', 'English', 'Bengali', 'Urdu'],
-        capacity: 300,
-        facilities: ['Parking', 'Ablution Area', 'Women\'s Section', 'Community Hall'],
-        photos: {},
-        followers: 203,
-        hasLiveTranslation: true,
-        distance: lat && lng ? calculateDistance(lat, lng, 40.7282, -73.7949) : 1.2,
-        hasAccount: true,
-        isFollowed: false
-      },
-      {
-        id: '687a993ca9dab7a9ec7311a6',
-        name: 'Masjid abo malik',
-        address: 'street 12, Hamburg, 50000, DE',
-        location: {
-          lat: 53.5511,
-          lng: 9.9937
-        },
-        phone: '+49-40-123456',
-        website: '',
-        madhab: 'Sunni',
-        servicesOffered: ['Live Translation'],
-        languagesSupported: ['Arabic', 'English', 'German'],
-        capacity: 80,
-        facilities: ['Space For Women', 'Ablutions Room', 'Salat Al Janaza', 'Salat El Eid'],
-        photos: {},
-        followers: 80,
-        hasLiveTranslation: true,
-        distance: lat && lng ? calculateDistance(lat, lng, 53.5511, 9.9937) : 2.1,
-        hasAccount: true,
-        isFollowed: false
+    // Query actual mosques from database
+    const mosques = await User.find({
+      userType: 'mosque',
+      isActive: true
+    }).select('-password -emailVerificationToken -__v');
+
+    // Format mosque data for API response
+    const mosquesArray = mosques.map(mosque => {
+      // Calculate distance if coordinates provided
+      let distance = 0;
+      let mosqueCoords = null;
+
+      if (mosque.location && mosque.location.coordinates) {
+        // Handle both [lng, lat] and [lat, lng] formats
+        const coords = mosque.location.coordinates;
+        if (coords.length >= 2 && coords[0] !== 0 && coords[1] !== 0) {
+          // Assume [lng, lat] format (GeoJSON standard)
+          mosqueCoords = { lng: coords[0], lat: coords[1] };
+        }
       }
-    ];
+
+      if (lat && lng && mosqueCoords) {
+        distance = calculateDistance(lat, lng, mosqueCoords.lat, mosqueCoords.lng);
+      }
+
+      return {
+        id: mosque._id.toString(),
+        name: mosque.mosqueName,
+        address: mosque.mosqueAddress,
+        location: mosqueCoords || { lat: 0, lng: 0 },
+        phone: mosque.phone,
+        website: mosque.website,
+        imam: mosque.imam || 'Not specified',
+        madhab: mosque.madhab || 'Sunni',
+        servicesOffered: mosque.servicesOffered || [],
+        languagesSupported: mosque.languagesSupported || ['Arabic'],
+        capacity: mosque.capacity,
+        facilities: mosque.facilities || [],
+        photos: mosque.photos || {},
+        followers: mosque.analytics?.totalFollowers || 0,
+        hasLiveTranslation: mosque.servicesOffered?.includes('Live Translation') || false,
+        distance: distance,
+        distanceFormatted: distance ? `${distance.toFixed(1)} km` : 'Unknown distance',
+        hasAccount: true,
+        isFollowed: req.user?.userType === 'individual' && req.user?.followedMosques?.some(f => f.mosqueId.toString() === mosque._id.toString())
+      };
+    });
 
     // Filter by distance if coordinates provided
-    let mosquesArray = hardcodedMosques;
+    let filteredMosques = mosquesArray;
     if (lat && lng) {
-      mosquesArray = hardcodedMosques
+      filteredMosques = mosquesArray
         .filter(mosque => mosque.distance <= parseFloat(radius))
         .sort((a, b) => a.distance - b.distance);
     }
 
-    res.json(mosquesArray);
+    res.json(filteredMosques);
   } catch (error) {
-    console.error('Error fetching mosques:', error);
+    console.error('Error fetching mosques from database:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch mosques'
     });
   }
 });
+
+// Search mosques endpoint
+app.get('/api/mosques/search', optionalAuth, async (req, res) => {
+  try {
+    const { q, lat, lng, radius = 50 } = req.query;
+
+    if (!q || q.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Search query must be at least 2 characters long'
+      });
+    }
+
+    // Query actual mosques from database
+    const searchTerm = q.toLowerCase();
+    const mosques = await User.find({
+      userType: 'mosque',
+      isActive: true,
+      $or: [
+        { mosqueName: { $regex: searchTerm, $options: 'i' } },
+        { mosqueAddress: { $regex: searchTerm, $options: 'i' } },
+        { imam: { $regex: searchTerm, $options: 'i' } },
+        { languagesSupported: { $in: [new RegExp(searchTerm, 'i')] } },
+        { servicesOffered: { $in: [new RegExp(searchTerm, 'i')] } }
+      ]
+    }).select('-password -emailVerificationToken -__v');
+
+    // Format mosque data for API response
+    let searchResults = mosques.map(mosque => {
+      // Calculate distance if coordinates provided
+      let distance = 0;
+      let mosqueCoords = null;
+
+      if (mosque.location && mosque.location.coordinates) {
+        // Handle both [lng, lat] and [lat, lng] formats
+        const coords = mosque.location.coordinates;
+        if (coords.length >= 2 && coords[0] !== 0 && coords[1] !== 0) {
+          // Assume [lng, lat] format (GeoJSON standard)
+          mosqueCoords = { lng: coords[0], lat: coords[1] };
+        }
+      }
+
+      if (lat && lng && mosqueCoords) {
+        distance = calculateDistance(lat, lng, mosqueCoords.lat, mosqueCoords.lng);
+      }
+
+      return {
+        id: mosque._id.toString(),
+        name: mosque.mosqueName,
+        address: mosque.mosqueAddress,
+        location: mosqueCoords || { lat: 0, lng: 0 },
+        phone: mosque.phone,
+        website: mosque.website,
+        imam: mosque.imam || 'Not specified',
+        madhab: mosque.madhab || 'Sunni',
+        servicesOffered: mosque.servicesOffered || [],
+        languagesSupported: mosque.languagesSupported || ['Arabic'],
+        capacity: mosque.capacity,
+        facilities: mosque.facilities || [],
+        photos: mosque.photos || {},
+        followers: mosque.analytics?.totalFollowers || 0,
+        hasLiveTranslation: mosque.servicesOffered?.includes('Live Translation') || false,
+        distance: distance,
+        distanceFormatted: distance ? `${distance.toFixed(1)} km` : 'Unknown distance',
+        hasAccount: true,
+        isFollowed: req.user?.userType === 'individual' && req.user?.followedMosques?.some(f => f.mosqueId.toString() === mosque._id.toString())
+      };
+    });
+
+    // Filter by distance if coordinates provided
+    if (lat && lng) {
+      searchResults = searchResults
+        .filter(mosque => mosque.distance <= parseFloat(radius))
+        .sort((a, b) => a.distance - b.distance);
+    }
+
+    res.json(searchResults);
+  } catch (error) {
+    console.error('Error searching mosques:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to search mosques'
+    });
+  }
+});
+
+// Get mosque by ID endpoint
+app.get('/api/mosques/:id', optionalAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Query mosque from database
+    const mosque = await User.findOne({
+      _id: id,
+      userType: 'mosque',
+      isActive: true
+    }).select('-password -emailVerificationToken -__v');
+
+    if (!mosque) {
+      return res.status(404).json({
+        success: false,
+        message: 'Mosque not found'
+      });
+    }
+
+    // Format mosque data for API response
+    let mosqueCoords = null;
+    if (mosque.location && mosque.location.coordinates) {
+      const coords = mosque.location.coordinates;
+      if (coords.length >= 2 && coords[0] !== 0 && coords[1] !== 0) {
+        mosqueCoords = { lng: coords[0], lat: coords[1] };
+      }
+    }
+
+    const formattedMosque = {
+      id: mosque._id.toString(),
+      name: mosque.mosqueName,
+      address: mosque.mosqueAddress,
+      location: mosqueCoords || { lat: 0, lng: 0 },
+      phone: mosque.phone,
+      website: mosque.website,
+      imam: mosque.imam || 'Not specified',
+      madhab: mosque.madhab || 'Sunni',
+      servicesOffered: mosque.servicesOffered || [],
+      languagesSupported: mosque.languagesSupported || ['Arabic'],
+      capacity: mosque.capacity,
+      facilities: mosque.facilities || [],
+      photos: mosque.photos || {},
+      followers: mosque.analytics?.totalFollowers || 0,
+      hasLiveTranslation: mosque.servicesOffered?.includes('Live Translation') || false,
+      distance: 0,
+      distanceFormatted: 'Unknown distance',
+      hasAccount: true,
+      isFollowed: req.user?.userType === 'individual' && req.user?.followedMosques?.some(f => f.mosqueId.toString() === mosque._id.toString())
+    };
+
+    res.json(formattedMosque);
+  } catch (error) {
+    console.error('Error fetching mosque by ID:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch mosque'
+    });
+  }
+});
+
+// Helper function to calculate distance between two points
 
 // Helper function to calculate distance between two points
 function calculateDistance(lat1, lon1, lat2, lon2) {

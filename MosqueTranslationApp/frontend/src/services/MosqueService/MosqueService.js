@@ -145,13 +145,11 @@ class MosqueService {
    */
   static async getMosqueById(mosqueId) {
     try {
-      // For now, we'll need to search through nearby mosques
-      // In a real app, this would be a dedicated API endpoint
-      const response = await ApiService.get(`${API_ENDPOINTS.MOSQUES}?lat=40.7128&lng=-74.0060&radius=50`);
+      // Use the dedicated API endpoint for getting mosque by ID
+      const response = await ApiService.get(API_ENDPOINTS.MOSQUES.DETAILS(mosqueId));
 
-      if (response && Array.isArray(response)) {
-        const mosque = response.find(m => m.id === mosqueId || m._id === mosqueId);
-        return mosque ? this.formatMosqueData(mosque) : null;
+      if (response) {
+        return this.formatMosqueData(response);
       }
 
       return null;
@@ -179,38 +177,11 @@ class MosqueService {
       facilities: mosque.facilities || [],
       followers: mosque.followers || mosque.analytics?.totalFollowers || 0,
       hasLiveTranslation: mosque.hasLiveTranslation || false,
-      distance: mosque.distance,
-      distanceFormatted: mosque.distanceFormatted,
       hasAccount: mosque.hasAccount !== false,
       isFollowed: mosque.isFollowed || false,
-    };
-  }
-
-
-
-  /**
-   * Format mosque data for consistent display
-   */
-  static formatMosqueData(mosque) {
-    return {
-      id: mosque.id || mosque._id,
-      name: mosque.name || mosque.mosqueName,
-      address: mosque.address || mosque.mosqueAddress,
-      location: mosque.location,
-      phone: mosque.phone,
-      website: mosque.website,
-      imam: mosque.imam,
-      servicesOffered: mosque.servicesOffered || [],
-      languagesSupported: mosque.languagesSupported || ['Arabic'],
-      capacity: mosque.capacity,
-      facilities: mosque.facilities || [],
-      followers: mosque.followers || mosque.analytics?.totalFollowers || 0,
-      hasLiveTranslation: mosque.hasLiveTranslation || false,
-      hasAccount: mosque.hasAccount || true,
-      isFollowed: mosque.isFollowed || false,
       distance: mosque.distance,
-      distanceFormatted: mosque.distanceFormatted || 
-        (mosque.distance ? LocationService.formatDistance(mosque.distance) : null),
+      distanceFormatted: mosque.distanceFormatted ||
+        (mosque.distance ? `${mosque.distance.toFixed(1)} km` : 'Unknown distance'),
     };
   }
 }

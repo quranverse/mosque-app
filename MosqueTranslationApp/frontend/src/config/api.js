@@ -50,8 +50,8 @@ export const API_ENDPOINTS = {
   MOSQUES: {
     LIST: '/mosques',
     DETAILS: (id) => `/mosques/${id}`,
-    NEARBY: '/mosques/nearby',
-    SEARCH: '/mosques',
+    NEARBY: '/mosques',
+    SEARCH: '/mosques/search',
   },
   
   // Translation Sessions

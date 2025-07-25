@@ -107,6 +107,7 @@ const MainTabNavigator = () => {
           tabBarIcon: ({ color, size }) => (
             <Icon name="access-time" size={size} color={color} />
           ),
+          headerShown: false, // Hide default header since we have custom header
         }}
       />
 

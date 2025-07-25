@@ -38,6 +38,8 @@ const MosqueManagementScreen = ({ navigation }) => {
       // Get user's current location
       const location = await LocationService.getCurrentLocation();
       if (location.success) {
+        console.log('Loading nearby mosques for location:', location.latitude, location.longitude);
+
         // Load nearby mosques from API
         const nearbyResult = await MosqueService.getNearbyMosques(
           location.latitude,
@@ -45,14 +47,37 @@ const MosqueManagementScreen = ({ navigation }) => {
           10 // 10km radius
         );
 
-        if (nearbyResult.success || nearbyResult.mosques.length > 0) {
+        console.log('Nearby mosques result:', nearbyResult);
+
+        if (nearbyResult.success && nearbyResult.mosques && nearbyResult.mosques.length > 0) {
           setAvailableMosques(nearbyResult.mosques.map(MosqueService.formatMosqueData));
+        } else {
+          // Try to load all mosques if nearby search fails
+          console.log('No nearby mosques found, loading all mosques...');
+          const allMosquesResult = await MosqueService.getNearbyMosques(
+            location.latitude,
+            location.longitude,
+            100 // Larger radius
+          );
+
+          if (allMosquesResult.success && allMosquesResult.mosques) {
+            setAvailableMosques(allMosquesResult.mosques.map(MosqueService.formatMosqueData));
+          } else {
+            setAvailableMosques([]);
+          }
         }
       } else {
-        // No location available, show empty state
-        setAvailableMosques([]);
+        console.log('Location not available, loading default mosques...');
+        // No location available, try to load mosques without location
+        const defaultResult = await MosqueService.getNearbyMosques(40.7128, -74.0060, 100);
+        if (defaultResult.success && defaultResult.mosques) {
+          setAvailableMosques(defaultResult.mosques.map(MosqueService.formatMosqueData));
+        } else {
+          setAvailableMosques([]);
+        }
       }
     } catch (error) {
+      console.error('Error loading mosques:', error);
       ErrorHandler.logError(error, 'loadMosques');
       ErrorHandler.showErrorAlert(error, 'Error', 'loading mosques');
 
@@ -114,21 +139,38 @@ const MosqueManagementScreen = ({ navigation }) => {
 
     if (query.trim().length > 2) {
       try {
+        console.log('Searching for:', query);
         const location = await LocationService.getCurrentLocation();
+
+        let searchResult;
         if (location.success) {
-          const searchResult = await MosqueService.searchMosques(
+          searchResult = await MosqueService.searchMosques(
             query,
             location.latitude,
             location.longitude,
             50 // 50km radius for search
           );
+        } else {
+          // Search without location
+          searchResult = await MosqueService.searchMosques(
+            query,
+            40.7128, // Default NYC coordinates
+            -74.0060,
+            100 // Larger radius when no location
+          );
+        }
 
-          if (searchResult.success || searchResult.mosques.length > 0) {
-            setAvailableMosques(searchResult.mosques.map(MosqueService.formatMosqueData));
-          }
+        console.log('Search result:', searchResult);
+
+        if (searchResult.success && searchResult.mosques && searchResult.mosques.length > 0) {
+          setAvailableMosques(searchResult.mosques.map(MosqueService.formatMosqueData));
+        } else {
+          // No results found
+          setAvailableMosques([]);
         }
       } catch (error) {
         console.error('Error searching mosques:', error);
+        setAvailableMosques([]);
       }
     } else if (query.trim().length === 0) {
       // Reload nearby mosques when search is cleared
@@ -137,9 +179,9 @@ const MosqueManagementScreen = ({ navigation }) => {
   };
 
   const filteredMosques = availableMosques.filter(mosque =>
-    mosque.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (mosque.name && mosque.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
     (mosque.imam && mosque.imam.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    mosque.address.toLowerCase().includes(searchQuery.toLowerCase())
+    (mosque.address && mosque.address.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const renderMosqueCard = (mosque) => {
@@ -149,9 +191,9 @@ const MosqueManagementScreen = ({ navigation }) => {
       <View key={mosque.id} style={styles.mosqueCard}>
         <View style={styles.mosqueHeader}>
           <View style={styles.mosqueInfo}>
-            <Text style={styles.mosqueName}>{mosque.name}</Text>
-            <Text style={styles.imamName}>Imam: {mosque.imam}</Text>
-            <Text style={styles.mosqueAddress}>{mosque.address}</Text>
+            <Text style={styles.mosqueName}>{mosque.name || 'Unknown Mosque'}</Text>
+            <Text style={styles.imamName}>Imam: {mosque.imam || 'Not specified'}</Text>
+            <Text style={styles.mosqueAddress}>{mosque.address || 'Address not available'}</Text>
           </View>
 
           <TouchableOpacity
@@ -178,17 +220,17 @@ const MosqueManagementScreen = ({ navigation }) => {
       <View style={styles.mosqueDetails}>
         <View style={styles.detailItem}>
           <Icon name="location-on" size={16} color="#666" />
-          <Text style={styles.detailText}>{mosque.distance} km away</Text>
+          <Text style={styles.detailText}>{mosque.distanceFormatted || (mosque.distance ? `${mosque.distance} km away` : 'Distance unknown')}</Text>
         </View>
-        
+
         <View style={styles.detailItem}>
           <Icon name="people" size={16} color="#666" />
-          <Text style={styles.detailText}>{mosque.followers} followers</Text>
+          <Text style={styles.detailText}>{mosque.followers || 0} followers</Text>
         </View>
         
         <View style={styles.detailItem}>
           <Icon name="language" size={16} color="#666" />
-          <Text style={styles.detailText}>{mosque.languages.join(', ')}</Text>
+          <Text style={styles.detailText}>{mosque.languagesSupported?.join(', ') || 'Arabic'}</Text>
         </View>
       </View>
     </View>

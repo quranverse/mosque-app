@@ -15,7 +15,7 @@ import moment from 'moment';
 import PrayerTimeService from '../../services/PrayerTimeService/PrayerTimeService';
 import LocationService from '../../services/LocationService/LocationService';
 
-const PrayerTimesScreen = () => {
+const PrayerTimesScreen = ({ navigation }) => {
   const [location, setLocation] = useState(null);
   const [todayTimes, setTodayTimes] = useState(null);
   const [weeklyTimes, setWeeklyTimes] = useState([]);
@@ -216,6 +216,18 @@ const PrayerTimesScreen = () => {
 
   return (
     <View style={styles.container}>
+      {/* Header with Mosque Management Icon */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.mosqueManagementButton}
+          onPress={() => navigation.navigate('MosqueManagement')}
+        >
+          <Icon name="favorite" size={24} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Prayer Times</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
       {/* View Mode Toggle */}
       <View style={styles.toggleContainer}>
         <TouchableOpacity
@@ -252,6 +264,28 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  header: {
+    backgroundColor: '#2E7D32',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    paddingTop: 50, // Account for status bar
+  },
+  mosqueManagementButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  headerSpacer: {
+    width: 40, // Same width as the button to center the title
   },
   loadingContainer: {
     flex: 1,
