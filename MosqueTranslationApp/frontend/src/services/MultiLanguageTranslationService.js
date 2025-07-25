@@ -26,28 +26,62 @@ class MultiLanguageTranslationService {
   // Load supported languages from backend
   async loadSupportedLanguages() {
     try {
-      const response = await fetch(`${API_BASE_URL}/translation/languages`);
-      const data = await response.json();
-      
-      if (data.success) {
-        this.supportedLanguages = data.data.languages;
-        this.languageGroups = data.data.languageGroups;
-        this.languageDetails = data.data.languageDetails;
-        
+      // Use ApiService for better error handling
+      const { default: ApiService } = await import('./ApiService');
+      const response = await ApiService.get('/translation/languages');
+
+      if (response && response.success && response.data) {
+        this.supportedLanguages = response.data.languages;
+        this.languageGroups = response.data.languageGroups;
+        this.languageDetails = response.data.languageDetails;
+
         // Cache for offline use
-        await AsyncStorage.setItem('supportedLanguages', JSON.stringify(data.data));
+        await AsyncStorage.setItem('supportedLanguages', JSON.stringify(response.data));
+        return;
       }
     } catch (error) {
       console.error('Failed to load supported languages:', error);
-      // Try to load from cache
+    }
+
+    // Try to load from cache first
+    try {
       const cached = await AsyncStorage.getItem('supportedLanguages');
       if (cached) {
         const data = JSON.parse(cached);
         this.supportedLanguages = data.languages;
         this.languageGroups = data.languageGroups;
         this.languageDetails = data.languageDetails;
+        return;
       }
+    } catch (cacheError) {
+      console.error('Failed to load from cache:', cacheError);
     }
+
+    // Fallback to hardcoded languages if both API and cache fail
+    this.supportedLanguages = [
+      'Arabic', 'English', 'Urdu', 'Turkish', 'Persian', 'Malay', 'Indonesian',
+      'German', 'French', 'Spanish', 'Italian', 'Dutch', 'Portuguese', 'Russian',
+      'Chinese', 'Japanese', 'Korean', 'Hindi', 'Bengali', 'Tamil', 'Thai',
+      'Swahili', 'Hausa', 'Amharic', 'Albanian', 'Bosnian', 'Kurdish', 'Pashto', 'Somali', 'Uzbek'
+    ];
+
+    this.languageGroups = {
+      'European': ['German', 'French', 'Spanish', 'Italian', 'Dutch', 'Portuguese', 'Russian', 'Albanian', 'Bosnian'],
+      'Asian': ['Chinese', 'Japanese', 'Korean', 'Hindi', 'Bengali', 'Tamil', 'Thai', 'Malay', 'Indonesian'],
+      'Islamic': ['Arabic', 'Urdu', 'Turkish', 'Persian', 'Kurdish', 'Pashto'],
+      'African': ['Swahili', 'Hausa', 'Amharic', 'Somali'],
+      'Popular': ['English', 'German', 'French', 'Spanish', 'Turkish', 'Urdu']
+    };
+
+    this.languageDetails = {
+      'Arabic': { code: 'ar', rtl: true, script: 'Arabic', family: 'Semitic' },
+      'English': { code: 'en', rtl: false, script: 'Latin', family: 'Germanic' },
+      'German': { code: 'de', rtl: false, script: 'Latin', family: 'Germanic' },
+      'French': { code: 'fr', rtl: false, script: 'Latin', family: 'Romance' },
+      'Spanish': { code: 'es', rtl: false, script: 'Latin', family: 'Romance' },
+      'Turkish': { code: 'tr', rtl: false, script: 'Latin', family: 'Turkic' },
+      'Urdu': { code: 'ur', rtl: true, script: 'Arabic', family: 'Indo-European' }
+    };
   }
 
   // Load user translation preferences

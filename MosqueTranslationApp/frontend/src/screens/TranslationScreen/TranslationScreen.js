@@ -34,6 +34,7 @@ const TranslationScreen = ({ navigation, route }) => {
   const [showTranslationView, setShowTranslationView] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
+  const [networkStatus, setNetworkStatus] = useState('checking'); // 'checking', 'connected', 'disconnected'
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(height)).current;
@@ -56,69 +57,100 @@ const TranslationScreen = ({ navigation, route }) => {
     try {
       setLoading(true);
 
-      // Initialize multi-language translation service
-      await multiLanguageTranslationService.initialize();
+      // Test connectivity first
+      await testConnectivity();
 
-      // Get user type from AuthService
+      // Get user type from AuthService first (this should always work)
       const currentUser = AuthService.getCurrentUser();
       const currentUserType = currentUser?.type || 'individual';
       setUserType(currentUserType);
 
-      // Load available mosques and sessions
-      await Promise.all([
-        loadAvailableMosques(),
-        loadActiveSessions()
-      ]);
+      // Initialize multi-language translation service (with fallback)
+      try {
+        await multiLanguageTranslationService.initialize();
+      } catch (serviceError) {
+        console.error('Translation service initialization failed:', serviceError);
+        // Continue anyway - the service has fallback data
+      }
 
-      // Initialize socket connection
+      // Load available mosques and sessions (with individual error handling)
+      const loadPromises = [
+        loadAvailableMosques().catch(error => {
+          console.error('Failed to load mosques:', error);
+          // Already handled in the function with fallback data
+        }),
+        loadActiveSessions().catch(error => {
+          console.error('Failed to load sessions:', error);
+          // Already handled in the function with empty array
+        })
+      ];
+
+      await Promise.allSettled(loadPromises);
+
+      // Initialize socket connection (non-blocking)
       initializeSocket();
 
       setLoading(false);
     } catch (error) {
       console.error('Failed to initialize translation screen:', error);
       setLoading(false);
+      // Don't show error to user - the screen should still be usable with fallback data
     }
   };
 
   const loadAvailableMosques = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/mosques?lat=40.7128&lng=-74.0060`);
-      const data = await response.json();
+      // Use ApiService instead of direct fetch
+      const { default: ApiService } = await import('../../services/ApiService');
+      const response = await ApiService.get('/mosques?lat=40.7128&lng=-74.0060');
 
-      if (Array.isArray(data)) {
-        setAvailableMosques(data.map(mosque => ({
-          id: mosque.id,
-          name: mosque.name,
-          address: mosque.address,
-          distance: mosque.distance,
-          hasLiveTranslation: mosque.hasLiveTranslation,
-          languagesSupported: mosque.languagesSupported || ['English'],
-          followers: mosque.followers || 0,
-          hasAccount: mosque.hasAccount
+      if (response && Array.isArray(response)) {
+        setAvailableMosques(response.map(mosque => ({
+          id: mosque._id || mosque.id,
+          name: mosque.mosqueName || mosque.name,
+          address: mosque.mosqueAddress || mosque.address,
+          distance: mosque.distance || 0,
+          hasLiveTranslation: true, // Assume all registered mosques can broadcast
+          languagesSupported: mosque.languagesSupported || ['English', 'Arabic'],
+          followers: mosque.analytics?.totalFollowers || 0,
+          hasAccount: true
         })));
+      } else {
+        // If no mosques returned, use fallback
+        throw new Error('No mosques data received');
       }
     } catch (error) {
       console.error('Failed to load mosques:', error);
-      // Fallback to mock data
+      // Fallback to database-based mock data that matches real mosque structure
       setAvailableMosques([
         {
-          id: 'mosque1',
+          id: '687979e29bd27fe81941daa2',
           name: 'Central Mosque',
-          address: '123 Main Street, New York, NY',
+          address: '123 Main Street, New York, NY 10001',
           distance: 0.5,
           hasLiveTranslation: true,
-          languagesSupported: ['English', 'German', 'French', 'Spanish'],
+          languagesSupported: ['Arabic', 'English', 'Urdu'],
           followers: 150,
           hasAccount: true
         },
         {
-          id: 'mosque2',
-          name: 'Masjid Al-Noor',
-          address: '456 Oak Avenue, Brooklyn, NY',
+          id: '687979e29bd27fe81941daa3',
+          name: 'Islamic Center of Queens',
+          address: '789 Queens Boulevard, Queens, NY 11373',
           distance: 1.2,
-          hasLiveTranslation: false,
-          languagesSupported: ['English', 'Turkish', 'Arabic'],
+          hasLiveTranslation: true,
+          languagesSupported: ['Arabic', 'English', 'Bengali', 'Urdu'],
           followers: 203,
+          hasAccount: true
+        },
+        {
+          id: '687a993ca9dab7a9ec7311a6',
+          name: 'Masjid abo malik',
+          address: 'street 12, Hamburg, 50000, DE',
+          distance: 2.1,
+          hasLiveTranslation: true,
+          languagesSupported: ['Arabic', 'English'],
+          followers: 80,
           hasAccount: true
         }
       ]);
@@ -127,14 +159,19 @@ const TranslationScreen = ({ navigation, route }) => {
 
   const loadActiveSessions = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/sessions/active`);
-      const data = await response.json();
+      // Use ApiService instead of direct fetch
+      const { default: ApiService } = await import('../../services/ApiService');
+      const response = await ApiService.get('/sessions/active');
 
-      if (Array.isArray(data)) {
-        setActiveSessions(data);
+      if (response && response.success && Array.isArray(response.sessions)) {
+        setActiveSessions(response.sessions);
+      } else {
+        // No active sessions
+        setActiveSessions([]);
       }
     } catch (error) {
       console.error('Failed to load active sessions:', error);
+      // Set empty array as fallback - no mock sessions to avoid confusion
       setActiveSessions([]);
     }
   };
@@ -142,26 +179,38 @@ const TranslationScreen = ({ navigation, route }) => {
   const initializeSocket = async () => {
     try {
       const token = await AsyncStorage.getItem('authToken');
-      const newSocket = io(API_BASE_URL.replace('/api', ''), {
+      const socketUrl = API_BASE_URL.replace('/api', '');
+
+      console.log('Attempting to connect to socket:', socketUrl);
+
+      const newSocket = io(socketUrl, {
         transports: ['websocket'],
         timeout: 10000,
+        reconnection: true,
+        reconnectionAttempts: 3,
+        reconnectionDelay: 1000,
       });
 
       newSocket.on('connect', () => {
-        console.log('Socket connected');
+        console.log('Socket connected successfully');
 
         // Authenticate if token available
         if (token) {
           newSocket.emit('authenticate', { token }, (response) => {
-            if (response.success) {
+            if (response && response.success) {
               console.log('Socket authenticated');
             }
           });
         }
       });
 
-      newSocket.on('disconnect', () => {
-        console.log('Socket disconnected');
+      newSocket.on('connect_error', (error) => {
+        console.log('Socket connection error:', error.message);
+        // Don't show error to user, just log it
+      });
+
+      newSocket.on('disconnect', (reason) => {
+        console.log('Socket disconnected:', reason);
       });
 
       newSocket.on('session_started', (data) => {
@@ -180,6 +229,7 @@ const TranslationScreen = ({ navigation, route }) => {
       setSocket(newSocket);
     } catch (error) {
       console.error('Failed to initialize socket:', error);
+      // Don't block the UI if socket fails
     }
   };
 
@@ -238,10 +288,30 @@ const TranslationScreen = ({ navigation, route }) => {
     hideTranslationViewAnimated();
   };
 
+  const testConnectivity = async () => {
+    try {
+      setNetworkStatus('checking');
+      console.log('Testing connectivity to:', API_BASE_URL);
+      const { default: ApiService } = await import('../../services/ApiService');
+      const response = await ApiService.get('/status');
+      console.log('Connectivity test successful:', response);
+      setNetworkStatus('connected');
+      return true;
+    } catch (error) {
+      console.error('Connectivity test failed:', error);
+      setNetworkStatus('disconnected');
+      return false;
+    }
+  };
+
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([
+      // Test connectivity first
+      const isConnected = await testConnectivity();
+      console.log('Network connectivity:', isConnected ? 'Available' : 'Failed');
+
+      await Promise.allSettled([
         loadAvailableMosques(),
         loadActiveSessions()
       ]);
@@ -327,9 +397,27 @@ const TranslationScreen = ({ navigation, route }) => {
           <Icon name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
 
-        <Text style={styles.headerTitle}>
-          {isConnected ? `${selectedMosque?.name}` : 'Live Translation'}
-        </Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>
+            {isConnected ? `${selectedMosque?.name}` : 'Live Translation'}
+          </Text>
+
+          {/* Network Status Indicator */}
+          <TouchableOpacity
+            style={styles.networkStatus}
+            onPress={testConnectivity}
+          >
+            <View style={[
+              styles.networkDot,
+              { backgroundColor: networkStatus === 'connected' ? '#4CAF50' :
+                                 networkStatus === 'checking' ? '#FF9800' : '#F44336' }
+            ]} />
+            <Text style={styles.networkText}>
+              {networkStatus === 'connected' ? 'Online' :
+               networkStatus === 'checking' ? 'Connecting...' : 'Offline (Tap to retry)'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {isConnected && (
           <TouchableOpacity onPress={handleDisconnect} style={styles.disconnectButton}>
@@ -876,6 +964,26 @@ const styles = StyleSheet.create({
   historyTime: {
     fontSize: 12,
     color: '#999',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  networkStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  networkDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 4,
+  },
+  networkText: {
+    fontSize: 10,
+    color: '#fff',
+    opacity: 0.8,
   },
 });
 

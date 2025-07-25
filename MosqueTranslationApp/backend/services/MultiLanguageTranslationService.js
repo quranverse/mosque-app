@@ -4,6 +4,11 @@ const Session = require('../models/Session');
 const User = require('../models/User');
 const config = require('../config/config');
 
+// Import new audio-related models
+const VoiceTranscription = require('../models/VoiceTranscription');
+const TranslationResult = require('../models/TranslationResult');
+const TranslationCache = require('../models/TranslationCache');
+
 class MultiLanguageTranslationService {
   constructor() {
     this.activeTranslators = new Map(); // socketId -> translator info
@@ -340,6 +345,111 @@ class MultiLanguageTranslationService {
   // Get language details
   getLanguageDetails(language) {
     return config.islamic.languageDetails[language] || null;
+  }
+
+  // Enhanced translation with caching and religious context
+  async translateWithCache(sourceText, targetLanguage, contextType = 'religious', provider = 'google') {
+    try {
+      // Check cache first
+      const cachedTranslation = await TranslationCache.findCachedTranslation(
+        sourceText,
+        'ar',
+        targetLanguage,
+        contextType
+      );
+
+      if (cachedTranslation) {
+        await cachedTranslation.incrementUsage();
+        console.log(`📋 Using cached translation for: ${sourceText.substring(0, 50)}...`);
+        return {
+          text: cachedTranslation.translatedText,
+          confidence: cachedTranslation.confidenceScore,
+          provider: cachedTranslation.provider,
+          isCached: true,
+          cacheId: cachedTranslation.cacheId
+        };
+      }
+
+      // No cache hit, translate with provider
+      const translation = await this.translateWithProvider(sourceText, targetLanguage, provider, contextType);
+
+      // Cache the result
+      if (translation && translation.text) {
+        await TranslationCache.createCacheEntry(
+          sourceText,
+          'ar',
+          targetLanguage,
+          translation.text,
+          provider,
+          contextType,
+          {
+            confidence: translation.confidence,
+            quality: translation.quality || 5,
+            cost: translation.cost || 0,
+            isReligious: contextType === 'religious'
+          }
+        );
+        console.log(`💾 Cached new translation for: ${sourceText.substring(0, 50)}...`);
+      }
+
+      return translation;
+
+    } catch (error) {
+      console.error('Error in translateWithCache:', error);
+      throw error;
+    }
+  }
+
+  // Translate with specific provider (placeholder - implement with actual APIs)
+  async translateWithProvider(sourceText, targetLanguage, provider, contextType) {
+    // This is a placeholder - you'll need to implement actual API calls
+    // to Google Translate, Azure Translator, OpenAI, etc.
+
+    console.log(`🔄 Translating with ${provider}: ${sourceText.substring(0, 50)}...`);
+
+    // Simulate translation (replace with actual API calls)
+    const simulatedTranslation = {
+      text: `[${provider.toUpperCase()}] Translated: ${sourceText}`,
+      confidence: 0.85,
+      provider: provider,
+      processingTime: 150,
+      cost: 0.001
+    };
+
+    return simulatedTranslation;
+  }
+
+  // Save translation result to database
+  async saveTranslationResult(transcriptionId, targetLanguage, translationData) {
+    try {
+      const translationId = `result_${transcriptionId}_${targetLanguage}_${Date.now()}`;
+
+      const translationResult = new TranslationResult({
+        translationId,
+        transcriptionId,
+        targetLanguage,
+        sourceText: translationData.sourceText,
+        translatedText: translationData.text,
+        translationProvider: translationData.provider,
+        confidenceScore: translationData.confidence || 0,
+        contextType: translationData.contextType || 'religious',
+        processingTimeMs: translationData.processingTime || 0,
+        isCached: translationData.isCached || false,
+        cost: {
+          amount: translationData.cost || 0,
+          currency: 'USD',
+          provider: translationData.provider
+        }
+      });
+
+      await translationResult.save();
+      console.log(`💾 Translation result saved: ${translationId}`);
+      return translationResult;
+
+    } catch (error) {
+      console.error('Error saving translation result:', error);
+      return null;
+    }
   }
 
   // Clean up inactive translators

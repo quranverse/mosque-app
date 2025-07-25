@@ -5,13 +5,17 @@ import { Platform } from 'react-native';
 const getApiBaseUrl = () => {
   // For development
   if (__DEV__) {
+    // Use the same IP as Metro bundler for consistent connectivity
+    // This IP should match what you see in Metro bundler logs: "Metro waiting on exp://10.0.129.103:3000"
+    const HOST_IP = '10.0.129.103';
+
     if (Platform.OS === 'ios') {
-      // iOS Simulator - use the same IP as the Metro bundler
-      // This should match the IP shown in the Metro bundler logs
-      return 'http://10.0.129.101:8080/api';
+      // iOS Simulator - use host machine IP
+      return `http://${HOST_IP}:8080/api`;
     } else if (Platform.OS === 'android') {
-      // Android Emulator uses 10.0.2.2 to access host machine's localhost
-      return 'http://10.0.2.2:8080/api';
+      // Android Emulator - use host machine IP (same as Metro bundler)
+      // This should work since Metro bundler is accessible from Android emulator
+      return `http://${HOST_IP}:8080/api`;
     } else {
       // Web or other platforms
       return 'http://localhost:8080/api';

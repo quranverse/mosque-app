@@ -144,10 +144,16 @@ const config = {
     apiKey: process.env.ASSEMBLYAI_API_KEY
   },
 
+  munsit: {
+    apiKey: process.env.MUNSIT_API_KEY,
+    socketUrl: process.env.MUNSIT_SOCKET_URL || 'https://api.cntxt.tools',
+    model: process.env.MUNSIT_MODEL || 'munsit-1'
+  },
+
   // Voice Recognition Settings
   voiceRecognition: {
-    defaultProvider: process.env.VOICE_PROVIDER || 'google',
-    fallbackProviders: ['azure', 'whisper'],
+    defaultProvider: process.env.VOICE_PROVIDER || 'munsit',
+    fallbackProviders: ['google', 'azure', 'whisper'],
     chunkSize: 1024, // Audio chunk size in bytes
     sampleRate: 16000, // Sample rate for audio processing
     enableRealTime: true,
@@ -158,6 +164,12 @@ const config = {
       'ar-JO': 'Arabic (Jordan)',
       'ar-AE': 'Arabic (UAE)',
       'ar-MA': 'Arabic (Morocco)'
+    },
+    munsitSettings: {
+      chunkInterval: 1000, // Send audio chunks every 1 second
+      reconnectAttempts: 3,
+      connectionTimeout: 10000,
+      enableWordTimestamps: true
     }
   }
 };

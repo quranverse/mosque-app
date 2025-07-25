@@ -15,24 +15,58 @@ class EmailService {
         return;
       }
 
-      this.transporter = nodemailer.createTransport({
-        service: config.email.service,
+      // Enhanced configuration with explicit SMTP settings and timeout handling
+      const transportConfig = {
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false, // true for 465, false for other ports
         auth: {
           user: config.email.user,
           pass: config.email.password
-        }
-      });
+        },
+        tls: {
+          rejectUnauthorized: false
+        },
+        connectionTimeout: 60000, // 60 seconds
+        greetingTimeout: 30000, // 30 seconds
+        socketTimeout: 60000, // 60 seconds
+        debug: process.env.NODE_ENV === 'development',
+        logger: process.env.NODE_ENV === 'development'
+      };
 
-      // Verify connection
-      this.transporter.verify((error, success) => {
-        if (error) {
-          console.error('❌ Email service configuration error:', error);
-        } else {
+      this.transporter = nodemailer.createTransport(transportConfig);
+
+      // Verify connection with timeout
+      const verifyWithTimeout = () => {
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Email service verification timeout'));
+          }, 30000); // 30 second timeout
+
+          this.transporter.verify((error, success) => {
+            clearTimeout(timeout);
+            if (error) {
+              reject(error);
+            } else {
+              resolve(success);
+            }
+          });
+        });
+      };
+
+      verifyWithTimeout()
+        .then(() => {
           console.log('✅ Email service ready');
-        }
-      });
+        })
+        .catch((error) => {
+          console.error('❌ Email service configuration error:', error);
+          console.log('📧 Email functionality will be disabled for this session');
+          this.transporter = null;
+        });
+
     } catch (error) {
       console.error('❌ Failed to initialize email service:', error);
+      this.transporter = null;
     }
   }
 
@@ -51,13 +85,38 @@ class EmailService {
         text: text || this.stripHtml(html)
       };
 
-      const result = await this.transporter.sendMail(mailOptions);
+      // Add timeout to email sending
+      const sendWithTimeout = () => {
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Email send timeout'));
+          }, 60000); // 60 second timeout
+
+          this.transporter.sendMail(mailOptions, (error, result) => {
+            clearTimeout(timeout);
+            if (error) {
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          });
+        });
+      };
+
+      const result = await sendWithTimeout();
       console.log(`✅ Email sent successfully to ${to}`);
-      
+
       return { success: true, messageId: result.messageId };
     } catch (error) {
       console.error(`❌ Failed to send email to ${to}:`, error);
-      throw error;
+
+      // If it's a connection error, try to reinitialize the transporter
+      if (error.code === 'EDNS' || error.code === 'ETIMEOUT' || error.code === 'ECONNECTION') {
+        console.log('🔄 Attempting to reinitialize email service...');
+        this.initializeTransporter();
+      }
+
+      return { success: false, message: error.message };
     }
   }
 

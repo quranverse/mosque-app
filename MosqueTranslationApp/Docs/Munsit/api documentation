@@ -1,0 +1,239 @@
+Authentication
+Munsit APIs require an API key for authentication. You can create and manage your API keys from your Munsit API Keys section. Keep your API key secure and do not expose it in client-side code such as browser applications or mobile apps. It is recommended to load the key from environment variables or a secure secrets manager on the server. All API requests must include the API key in the Authorization header using the Bearer token format:
+Authorization
+Authorization: Bearer YOUR_MUNSIT_API_KEY
+Usage from any API consumed with API Keys can be viewed in the Munsit Dashboard.
+Supported Audio Formats
+Munsit supports a wide range of common audio formats to ensure seamless compatibility across various recording devices and platforms. The supported formats are:
+
+.aac
+.aiff
+.alac
+.amr
+.flac
+.m4a
+.mp3
+.ogg
+.wav
+.wma
+.opus
+.mp2
+.m4r
+.webm
+Transcription Duration Limit
+Munsit has a maximum transcription duration limit of up to 30 minutes per session, recording, or audio file. This ensures efficient processing and response times for transcription requests. If you need to transcribe longer recordings, consider splitting them into multiple segments, each under 30 minutes in length.
+Audio Transcription
+Munsit provides accurate transcription of Arabic speech through a simple file-upload API. This endpoint accepts audio files as multipart/form-data and is designed for asynchronous transcription of pre-recorded files. All requests require authentication using an API key. Just send a supported audio file via a POST request, and Munsit will return a high-quality Arabic transcript.
+Request
+file
+
+File
+Audio file of one of the supported file formats, passed to this key of form-data.
+
+Response
+transcription
+
+String
+The full transcribed text of the audio file.
+
+duration
+
+Number
+Total duration of the transcribed audio in seconds.
+
+timestamps
+
+Array<{ word: string, start: number, end: number }>
+An array of word-level timestamps. Each entry includes the word along with its start and end times in seconds.
+
+Transcribe Audio
+CURL
+curl --request POST \
+  	--url https://api.cntxt.tools/audio/transcribe \
+  	-H "Authorization: Bearer $MUNSIT_API_KEY" \
+  	-H "Content-Type: multipart/form-data" \
+  	-F "file=@/path/to/file/audio.mp3;type=audio/mpeg" \
+  	-F "model=munsit-1"
+Sample Response
+{
+  "statusCode": 201,
+  "data": {
+    "transcription": "لك كلما عمقت الآخرين أصبحت قزما الأشياء لا تقاس ب ما في شيء اسمه كبير ما في شيء اسمه صغير...",
+    "duration": 53.661375,
+    "timestamps": [
+        {
+            word: "الأشياء",
+            start: 0.24,
+            end: 0.31
+        }
+    ]
+  },
+  "message": "Success"
+}
+
+Streaming
+Munsit supports real-time Arabic speech transcription via WebSocket streaming. This allows you to stream audio directly to the server and receive transcribed text in near real-time. Ideal for live applications such as voice assistants, call monitoring, or live captioning, the socket connection provides low-latency, continuous transcription. All socket streams must be authenticated using an API key before sending audio data.
+
+Supported file types include .wav or raw .pcm data. However, the first chunk sent should always be .wav.
+
+The code example covers integration with React JS using Socket-IO and RecorderJS libraries. Similar setup can be emulated for other environments/languages/frameworks.
+
+import React, { useRef, useState, useEffect } from "react";
+import Recorder from "recorder-js";
+import io from "socket.io-client";
+
+const MunsitStreamingRecorder = () => {
+  const recorderRef = useRef(null);
+  const socketRef = useRef(null);
+  const [recording, setRecording] = useState(false);
+  const [transcription, setTranscription] = useState("");
+  const [error, setError] = useState("");
+
+  const startRecording = async () => {
+    // Initialize socket connection
+    socketRef.current = io("https://api.cntxt.tools", {
+      transports: ["websocket"],
+      query: {
+        apiKey: process.env.REACT_APP_MUNSIT_API_KEY, // Replace with your actual API key
+      },
+    });
+
+    // Set up socket event listeners
+    socketRef.current.on("connect", () => {
+      console.log("Connected to Munsit socket server");
+    });
+
+    socketRef.current.on("transcription", (data) => {
+      setTranscription(data);
+    });
+
+    socketRef.current.on("transcription_error", (error) => {
+      console.error("Transcription error:", error);
+      setError("Transcription error: " + error);
+    });
+
+    socketRef.current.on("authentication_error", (error) => {
+      console.error("Authentication error:", error);
+      setError("Authentication failed: " + error);
+    });
+
+    socketRef.current.on("disconnect", () => {
+      console.log("Disconnected from Munsit socket server");
+    });
+
+    // Start recording
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const recorder = new Recorder(audioContext);
+    await recorder.init(stream);
+    recorderRef.current = recorder;
+    recorder.start();
+
+    const interval = setInterval(async () => {
+      const { blob } = await recorderRef.current.stop();
+      const arrayBuffer = await blob.arrayBuffer();
+      const uint8 = new Uint8Array(arrayBuffer);
+
+      socketRef.current?.emit("audio_chunk", {
+        audioBuffer: Array.from(uint8),
+      });
+
+      recorderRef.current.start();
+    }, 1000);
+
+    recorderRef.current._interval = interval;
+    setRecording(true);
+    setError("");
+    setTranscription("");
+  };
+
+  const stopRecording = () => {
+    clearInterval(recorderRef.current?._interval);
+    recorderRef.current?.stop();
+    recorderRef.current = null;
+
+    socketRef.current?.emit("end");
+    socketRef.current?.disconnect();
+    socketRef.current = null;
+
+    setRecording(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      stopRecording();
+    };
+  }, []);
+
+  return (
+    <div>
+      <h3>Munsit Live Transcription</h3>
+      <button onClick={recording ? stopRecording : startRecording}>
+        {recording ? "Stop" : "Start"} Recording
+      </button>
+
+      {error && (
+        <div style={{ color: "red", marginTop: "1rem" }}>
+          <strong>Error:</strong> {error}
+        </div>
+      )}
+
+      <div style={{ marginTop: "1rem", whiteSpace: "pre-wrap" }}>
+        <strong>Live Transcription:</strong>
+        <p>{transcription || "No transcription yet."}</p>
+      </div>
+    </div>
+  );
+};
+
+export default MunsitStreamingRecorder;
+
+Authentication
+apiKey
+
+String
+You must include the apiKey as part of the query in the socket connection
+
+Authenticate via Socket IO
+import io from "socket.io-client";
+
+const socket = io("https://api.cntxt.tools", {
+  transports: ["websocket"],
+  query: {
+    apiKey: $MUNSIT_API_KEY
+  }
+});
+Events to Emit
+audio_chunk
+
+{ audioBuffer: Array<Uint8> }
+The message that audio_chunk expects is a JSON with the key of audioBuffer. The expected type for `audioBuffer` is wav audio buffer represented as Uint8 array of numbers.
+
+Events to Listen
+connect
+
+String
+This will be emitted by server when client is successfully connected.
+
+transcription
+
+String
+The result of all the buffer received from the client, transcribed in Arabic.
+
+transcription_error
+
+String
+Any error produced during transcription.
+
+authentication_error
+
+String
+Error produced by usage of API keys authentication of client socket.
+
+Flow for streaming transcription
+Connect to Munsit server socket and establish a connection with valid API keys.
+Listen to event of authentication_error and connect to ensure the connection was successful.
+Record audio chunks in WAV format and emit them to eventaudio_chunk approximately ~1s.
+Listen to transcription_error event for any errors produced during the process of transcription.
+Listen to transcription event and display the results received on this event as they are, they will entail the result of all the audio chunks captured.
+Safely disconnect socket connection once transcription is done.

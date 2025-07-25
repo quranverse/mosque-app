@@ -13,15 +13,16 @@ The Mosque Translation App now includes a comprehensive real-time voice recognit
 - **Low Latency**: Sub-second processing for live speech
 
 ### ✅ **Multiple Provider Support**
-- **Google Speech-to-Text**: Best accuracy for Arabic (9/10)
-- **Azure Speech Services**: Good accuracy with fast processing (8/10)
+- **Munsit API**: Specialized Arabic speech recognition (9/10) - **DEFAULT**
+- **Google Speech-to-Text**: Best general accuracy for Arabic (8/10)
+- **Azure Speech Services**: Good accuracy with fast processing (7/10)
 - **OpenAI Whisper**: Local processing option (7/10)
 - **AssemblyAI**: Real-time streaming optimized (6/10)
 - **AWS Transcribe**: Enterprise-grade option (7/10)
 
 ### ✅ **Automatic Fallback System**
-- **Primary Provider**: Google Speech (most accurate for Arabic)
-- **Fallback Providers**: Azure → Whisper → AssemblyAI
+- **Primary Provider**: Munsit (specialized for Arabic real-time transcription)
+- **Fallback Providers**: Google → Azure → Whisper
 - **Seamless Switching**: Automatic provider switching on errors
 - **Zero Downtime**: Continuous service during provider switches
 
@@ -35,13 +36,14 @@ Arabic Text → Multi-Language Translation → Real-Time Subtitles
 
 ### **Provider Comparison**
 
-| Provider | Accuracy | Speed | Cost | Arabic Support | Real-Time |
-|----------|----------|-------|------|----------------|-----------|
-| Google Speech | 9/10 | 8/10 | 6/10 | Excellent | ✅ |
-| Azure Speech | 8/10 | 7/10 | 7/10 | Very Good | ✅ |
-| OpenAI Whisper | 7/10 | 9/10 | 10/10 | Good | ✅ |
-| AssemblyAI | 6/10 | 9/10 | 8/10 | Fair | ✅ |
-| AWS Transcribe | 7/10 | 6/10 | 5/10 | Good | ✅ |
+| Provider | Accuracy | Speed | Cost | Arabic Support | Real-Time | Status |
+|----------|----------|-------|------|----------------|-----------|--------|
+| **Munsit** | **9/10** | **9/10** | **7/10** | **Specialized** | ✅ | **DEFAULT** |
+| Google Speech | 8/10 | 7/10 | 5/10 | Excellent | ✅ | Fallback |
+| Azure Speech | 7/10 | 6/10 | 5/10 | Very Good | ✅ | Fallback |
+| OpenAI Whisper | 7/10 | 9/10 | 10/10 | Good | ✅ | Fallback |
+| AssemblyAI | 6/10 | 9/10 | 8/10 | Fair | ✅ | Available |
+| AWS Transcribe | 7/10 | 6/10 | 5/10 | Good | ✅ | Available |
 
 ## 🔧 Implementation
 

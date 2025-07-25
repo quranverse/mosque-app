@@ -5,6 +5,14 @@ const User = require('../models/User');
 const Session = require('../models/Session');
 const Translation = require('../models/Translation');
 
+// Audio-related models for new functionality
+const AudioSession = require('../models/AudioSession');
+const VoiceTranscription = require('../models/VoiceTranscription');
+const TranslationResult = require('../models/TranslationResult');
+const AudioRecording = require('../models/AudioRecording');
+const SessionParticipant = require('../models/SessionParticipant');
+const TranslationCache = require('../models/TranslationCache');
+
 class DatabaseInitializer {
   constructor() {
     this.isInitialized = false;
@@ -19,7 +27,10 @@ class DatabaseInitializer {
       
       // Create indexes
       await this.createIndexes();
-      
+
+      // Create audio-related collections and indexes
+      await this.createAudioCollections();
+
       // Seed initial data if in development
       if (config.nodeEnv === 'development') {
         await this.seedDevelopmentData();
@@ -98,6 +109,90 @@ class DatabaseInitializer {
 
     } catch (error) {
       console.error('❌ Failed to create indexes:', error);
+      throw error;
+    }
+  }
+
+  async createAudioCollections() {
+    try {
+      console.log('🎵 Creating audio-related collections and indexes...');
+
+      // Create AudioSession indexes
+      try {
+        await AudioSession.createIndexes();
+        console.log('  ✅ AudioSession indexes created');
+      } catch (error) {
+        if (error.code === 86) {
+          console.log('  ⚠️ AudioSession indexes already exist, skipping...');
+        } else {
+          throw error;
+        }
+      }
+
+      // Create VoiceTranscription indexes
+      try {
+        await VoiceTranscription.createIndexes();
+        console.log('  ✅ VoiceTranscription indexes created');
+      } catch (error) {
+        if (error.code === 86) {
+          console.log('  ⚠️ VoiceTranscription indexes already exist, skipping...');
+        } else {
+          throw error;
+        }
+      }
+
+      // Create TranslationResult indexes
+      try {
+        await TranslationResult.createIndexes();
+        console.log('  ✅ TranslationResult indexes created');
+      } catch (error) {
+        if (error.code === 86) {
+          console.log('  ⚠️ TranslationResult indexes already exist, skipping...');
+        } else {
+          throw error;
+        }
+      }
+
+      // Create AudioRecording indexes
+      try {
+        await AudioRecording.createIndexes();
+        console.log('  ✅ AudioRecording indexes created');
+      } catch (error) {
+        if (error.code === 86) {
+          console.log('  ⚠️ AudioRecording indexes already exist, skipping...');
+        } else {
+          throw error;
+        }
+      }
+
+      // Create SessionParticipant indexes
+      try {
+        await SessionParticipant.createIndexes();
+        console.log('  ✅ SessionParticipant indexes created');
+      } catch (error) {
+        if (error.code === 86) {
+          console.log('  ⚠️ SessionParticipant indexes already exist, skipping...');
+        } else {
+          throw error;
+        }
+      }
+
+      // Create TranslationCache indexes
+      try {
+        await TranslationCache.createIndexes();
+        console.log('  ✅ TranslationCache indexes created');
+      } catch (error) {
+        if (error.code === 86) {
+          console.log('  ⚠️ TranslationCache indexes already exist, skipping...');
+        } else {
+          throw error;
+        }
+      }
+
+      console.log('✅ All audio-related collections processed successfully');
+
+    } catch (error) {
+      console.error('❌ Failed to create audio collections:', error);
       throw error;
     }
   }

@@ -8,11 +8,16 @@ import {
   ScrollView,
   Dimensions,
   Animated,
+  PermissionsAndroid,
+  Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import io from 'socket.io-client';
+// Temporarily disable audio module to fix native module error
+// import { AudioModule } from 'expo-audio';
 import { API_BASE_URL } from '../config/api';
 import AuthService from '../services/AuthService/AuthService';
+import VoiceRecognitionComponent from '../components/Audio/VoiceRecognitionComponent';
 
 const { width } = Dimensions.get('window');
 
@@ -24,9 +29,19 @@ const BroadcastingScreen = ({ navigation }) => {
   const [socket, setSocket] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [broadcastHistory, setBroadcastHistory] = useState([]);
-  
+
+  // New state for voice recognition and audio
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [transcriptionPreview, setTranscriptionPreview] = useState('');
+  const [partialTranscription, setPartialTranscription] = useState('');
+  const [isVoiceRecognitionActive, setIsVoiceRecognitionActive] = useState(false);
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [audioPermission, setAudioPermission] = useState(false);
+  const [voiceProvider, setVoiceProvider] = useState('munsit');
+
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const durationInterval = useRef(null);
+  const voiceRecognitionRef = useRef(null);
 
   useEffect(() => {
     initializeScreen();
@@ -38,12 +53,40 @@ const BroadcastingScreen = ({ navigation }) => {
   const initializeScreen = async () => {
     const user = AuthService.getCurrentUser();
     setCurrentUser(user);
-    
+
+    // Request audio permissions
+    await requestAudioPermissions();
+
     // Load broadcast history
     loadBroadcastHistory();
-    
+
     // Initialize socket connection
     initializeSocket();
+  };
+
+  const requestAudioPermissions = async () => {
+    try {
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: 'Audio Recording Permission',
+            message: 'This app needs access to your microphone to broadcast audio.',
+            buttonNeutral: 'Ask Me Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          }
+        );
+        setAudioPermission(granted === PermissionsAndroid.RESULTS.GRANTED);
+      } else {
+        // iOS permissions - will be handled by VoiceRecognitionComponent
+        // For now, assume permission is granted
+        setAudioPermission(true);
+      }
+    } catch (error) {
+      console.error('Error requesting audio permissions:', error);
+      setAudioPermission(false);
+    }
   };
 
   const initializeSocket = () => {
@@ -62,6 +105,28 @@ const BroadcastingScreen = ({ navigation }) => {
 
       socketConnection.on('listener_left', (data) => {
         setConnectedListeners(prev => Math.max(0, prev - 1));
+      });
+
+      // Voice recognition events
+      socketConnection.on('voice_transcription', (transcription) => {
+        console.log('📝 Received transcription:', transcription);
+
+        if (transcription.isFinal) {
+          // Final transcription - add to main display
+          setTranscriptionPreview(prev => {
+            const newText = prev ? `${prev}\n${transcription.text}` : transcription.text;
+            return newText;
+          });
+          setPartialTranscription(''); // Clear partial text
+        } else {
+          // Partial transcription - show in real-time
+          setPartialTranscription(transcription.text);
+        }
+      });
+
+      socketConnection.on('voice_recognition_error', (error) => {
+        console.error('Voice recognition error:', error);
+        Alert.alert('Voice Recognition Error', error.message);
       });
 
       socketConnection.on('disconnect', () => {
@@ -104,28 +169,60 @@ const BroadcastingScreen = ({ navigation }) => {
         return;
       }
 
+      if (!audioPermission) {
+        Alert.alert('Permission Required', 'Microphone permission is required for broadcasting.');
+        await requestAudioPermissions();
+        return;
+      }
+
+      // Generate session ID
+      const sessionId = `session_${currentUser.id}_${Date.now()}`;
+      setCurrentSessionId(sessionId);
+
       // Start recording animation
       startPulseAnimation();
-      
+
       setIsRecording(true);
       setIsBroadcasting(true);
       setBroadcastDuration(0);
-      
+      setTranscriptionPreview('');
+
       // Start duration timer
       durationInterval.current = setInterval(() => {
         setBroadcastDuration(prev => prev + 1);
       }, 1000);
 
+      // Start voice recognition
+      if (voiceRecognitionRef.current) {
+        try {
+          await voiceRecognitionRef.current.startRecognition({
+            sessionId,
+            provider: 'munsit', // Default provider - specialized for Arabic
+            language: 'ar-SA',
+            enableRecording: true,
+            sessionType: 'general',
+            recordingTitle: `Broadcast ${new Date().toLocaleString()}`
+          });
+          setIsVoiceRecognitionActive(true);
+        } catch (voiceError) {
+          console.warn('Voice recognition failed to start:', voiceError);
+          // Continue without voice recognition
+        }
+      }
+
       // Emit broadcast start to socket
       if (socket) {
         socket.emit('start_broadcast', {
+          sessionId,
           mosqueId: currentUser.id,
           mosqueName: currentUser.mosqueName,
-          language: 'Arabic', // Default language
+          language: 'Arabic',
+          enableVoiceRecognition: true,
+          enableRecording: true
         });
       }
 
-      Alert.alert('Broadcasting Started', 'Your live broadcast is now active. Followers can join to receive translations.');
+      Alert.alert('Broadcasting Started', 'Your live broadcast is now active. Voice recognition and recording are enabled.');
     } catch (error) {
       console.error('Error starting broadcast:', error);
       Alert.alert('Error', 'Failed to start broadcast');
@@ -136,7 +233,17 @@ const BroadcastingScreen = ({ navigation }) => {
     try {
       setIsRecording(false);
       setIsBroadcasting(false);
-      
+
+      // Stop voice recognition
+      if (voiceRecognitionRef.current && isVoiceRecognitionActive) {
+        try {
+          await voiceRecognitionRef.current.stopRecognition();
+        } catch (voiceError) {
+          console.warn('Error stopping voice recognition:', voiceError);
+        }
+      }
+      setIsVoiceRecognitionActive(false);
+
       // Stop animations and timers
       stopPulseAnimation();
       if (durationInterval.current) {
@@ -147,6 +254,7 @@ const BroadcastingScreen = ({ navigation }) => {
       // Emit broadcast stop to socket
       if (socket) {
         socket.emit('stop_broadcast', {
+          sessionId: currentSessionId,
           mosqueId: currentUser.id,
           duration: broadcastDuration,
           listeners: connectedListeners,
@@ -156,9 +264,12 @@ const BroadcastingScreen = ({ navigation }) => {
       // Reset state
       setConnectedListeners(0);
       setBroadcastDuration(0);
+      setTranscriptionPreview('');
+      setCurrentSessionId(null);
+      setAudioLevel(0);
 
       Alert.alert('Broadcasting Stopped', `Broadcast ended after ${formatDuration(broadcastDuration)} with ${connectedListeners} listeners.`);
-      
+
       // Reload history
       loadBroadcastHistory();
     } catch (error) {
@@ -252,6 +363,19 @@ const BroadcastingScreen = ({ navigation }) => {
           <View style={styles.liveStats}>
             <Text style={styles.duration}>{formatDuration(broadcastDuration)}</Text>
             <Text style={styles.listeners}>{connectedListeners} listeners</Text>
+
+            {/* Audio Level Indicator */}
+            <View style={styles.audioLevelContainer}>
+              <Text style={styles.audioLevelLabel}>Audio Level</Text>
+              <View style={styles.audioLevelBar}>
+                <View
+                  style={[
+                    styles.audioLevelFill,
+                    { width: `${Math.min(audioLevel, 100)}%` }
+                  ]}
+                />
+              </View>
+            </View>
           </View>
         )}
 
@@ -276,6 +400,87 @@ const BroadcastingScreen = ({ navigation }) => {
         </Text>
       </View>
 
+      {/* Live Transcription Preview */}
+      {isBroadcasting && (
+        <View style={styles.transcriptionContainer}>
+          <View style={styles.transcriptionHeader}>
+            <Text style={styles.transcriptionTitle}>Live Transcription ({voiceProvider.toUpperCase()})</Text>
+
+            {/* Voice Level Indicator */}
+            <View style={styles.voiceIndicatorContainer}>
+              <View style={styles.voiceWaveContainer}>
+                {[...Array(5)].map((_, index) => (
+                  <Animated.View
+                    key={index}
+                    style={[
+                      styles.voiceWaveBar,
+                      {
+                        height: audioLevel > (index * 20) ?
+                          Math.max(4, audioLevel * 0.8) : 4,
+                        backgroundColor: audioLevel > (index * 20) ?
+                          '#4CAF50' : '#E0E0E0'
+                      }
+                    ]}
+                  />
+                ))}
+              </View>
+              <Text style={styles.audioLevelText}>
+                {Math.round(audioLevel)}%
+              </Text>
+            </View>
+          </View>
+
+          <ScrollView style={styles.transcriptionScroll} showsVerticalScrollIndicator={false}>
+            {/* Final Transcriptions */}
+            {transcriptionPreview ? (
+              <Text style={styles.transcriptionText}>
+                {transcriptionPreview}
+              </Text>
+            ) : null}
+
+            {/* Partial/Real-time Transcription */}
+            {partialTranscription ? (
+              <Text style={[styles.transcriptionText, styles.partialTranscription]}>
+                {partialTranscription}
+              </Text>
+            ) : null}
+
+            {/* Waiting message */}
+            {!transcriptionPreview && !partialTranscription && (
+              <Text style={styles.waitingText}>
+                🎙️ Waiting for voice input...
+                {'\n'}Speak in Arabic to see real-time transcription
+              </Text>
+            )}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Voice Recognition Component */}
+      <VoiceRecognitionComponent
+        ref={voiceRecognitionRef}
+        onAudioLevel={setAudioLevel}
+        onTranscription={(transcription) => {
+          console.log('🎙️ Voice recognition transcription:', transcription);
+
+          if (transcription.isFinal) {
+            // Final transcription - add to main display
+            setTranscriptionPreview(prev => {
+              const newText = prev ? `${prev}\n${transcription.text}` : transcription.text;
+              return newText;
+            });
+            setPartialTranscription(''); // Clear partial text
+          } else {
+            // Partial transcription - show in real-time
+            setPartialTranscription(transcription.text);
+          }
+        }}
+        onError={(error) => {
+          console.error('Voice recognition error:', error);
+          Alert.alert('Voice Recognition Error', error.message);
+        }}
+      />
+
       {/* Broadcasting Info */}
       <View style={styles.infoContainer}>
         <View style={styles.infoItem}>
@@ -289,6 +494,18 @@ const BroadcastingScreen = ({ navigation }) => {
         <View style={styles.infoItem}>
           <Icon name="translate" size={20} color="#666" />
           <Text style={styles.infoText}>Real-time translation enabled</Text>
+        </View>
+        <View style={styles.infoItem}>
+          <Icon name="mic" size={20} color="#666" />
+          <Text style={styles.infoText}>
+            Voice recognition: {isVoiceRecognitionActive ? 'Active' : 'Inactive'}
+          </Text>
+        </View>
+        <View style={styles.infoItem}>
+          <Icon name="fiber-manual-record" size={20} color="#666" />
+          <Text style={styles.infoText}>
+            Audio recording: {isBroadcasting ? 'Recording' : 'Stopped'}
+          </Text>
         </View>
       </View>
 
@@ -360,6 +577,28 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 5,
   },
+  audioLevelContainer: {
+    marginTop: 15,
+    width: '100%',
+    alignItems: 'center',
+  },
+  audioLevelLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 5,
+  },
+  audioLevelBar: {
+    width: '80%',
+    height: 8,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  audioLevelFill: {
+    height: '100%',
+    backgroundColor: '#4CAF50',
+    borderRadius: 4,
+  },
   microphoneContainer: {
     marginVertical: 20,
   },
@@ -397,6 +636,70 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginLeft: 10,
+  },
+  transcriptionContainer: {
+    backgroundColor: '#fff',
+    marginHorizontal: 20,
+    marginBottom: 20,
+    borderRadius: 10,
+    padding: 20,
+    elevation: 2,
+    maxHeight: 200,
+  },
+  transcriptionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  transcriptionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    flex: 1,
+  },
+  voiceIndicatorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  voiceWaveContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 30,
+    marginRight: 10,
+  },
+  voiceWaveBar: {
+    width: 4,
+    marginHorizontal: 1,
+    borderRadius: 2,
+    backgroundColor: '#E0E0E0',
+  },
+  audioLevelText: {
+    fontSize: 12,
+    color: '#666',
+    minWidth: 35,
+  },
+  transcriptionScroll: {
+    maxHeight: 120,
+  },
+  transcriptionText: {
+    fontSize: 14,
+    color: '#333',
+    lineHeight: 20,
+    textAlign: 'right', // RTL for Arabic
+    marginBottom: 5,
+  },
+  partialTranscription: {
+    color: '#666',
+    fontStyle: 'italic',
+    opacity: 0.8,
+  },
+  waitingText: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    lineHeight: 20,
   },
   historySection: {
     backgroundColor: '#fff',
