@@ -34,7 +34,10 @@ const io = socketIo(server, {
     origin: config.security.corsOrigin,
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  pingTimeout: 60000, // 60 seconds
+  pingInterval: 25000, // 25 seconds
+  transports: ['websocket', 'polling']
 });
 
 // Security middleware
@@ -66,6 +69,9 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Static file serving for uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Static file serving for audio recordings
+app.use('/api/audio/recordings', express.static(path.join(__dirname, 'audio-recordings')));
+
 // API Routes
 const userRoutes = require('./routes/user');
 const sessionRoutes = require('./routes/sessions');
@@ -77,12 +83,74 @@ app.use('/api/translation', translationRoutes);
 // In-memory storage for development (will be replaced with database)
 const activeSessions = new Map();
 const connectedClients = new Map();
+const mosques = new Map(); // Track mosque status and live broadcasts
 
 // Remove mock data - using real database now
 
+// Function to send broadcast notifications to users following a mosque
+async function sendBroadcastNotifications(mosqueId, mosqueName, language) {
+  try {
+    // Get all users who follow this mosque
+    const User = require('./models/User');
+    const mongoose = require('mongoose');
+
+    // Convert mosqueId to ObjectId if it's a string
+    const mosqueObjectId = typeof mosqueId === 'string' ? new mongoose.Types.ObjectId(mosqueId) : mosqueId;
+
+    const followedMosqueUsers = await User.find({
+      'followedMosques.mosqueId': mosqueObjectId,
+      'notificationPreferences.liveTranslationAlerts': true
+    });
+
+    console.log(`📢 Sending broadcast notifications to ${followedMosqueUsers.length} registered users for mosque ${mosqueName}`);
+
+    // Send notifications to registered users who follow this mosque
+    for (const user of followedMosqueUsers) {
+      const userSockets = Array.from(connectedClients.entries())
+        .filter(([socketId, client]) => client.userId && client.userId.toString() === user._id.toString())
+        .map(([socketId]) => socketId);
+
+      userSockets.forEach(socketId => {
+        io.to(socketId).emit('mosque_broadcast_notification', {
+          type: 'live_broadcast_started',
+          mosqueId,
+          mosqueName,
+          language,
+          message: `${mosqueName} has started live translation in ${language}`,
+          timestamp: new Date()
+        });
+      });
+    }
+
+    // Also send notifications to ALL connected clients (including anonymous users)
+    // This ensures anonymous users who follow mosques locally also get notifications
+    const allConnectedClients = Array.from(connectedClients.entries())
+      .filter(([socketId, client]) => client.userType !== 'mosque') // Don't notify the broadcasting mosque
+      .map(([socketId]) => socketId);
+
+    console.log(`📢 Sending broadcast notifications to ${allConnectedClients.length} total connected clients (including anonymous)`);
+
+    allConnectedClients.forEach(socketId => {
+      io.to(socketId).emit('mosque_broadcast_notification', {
+        type: 'live_broadcast_started',
+        mosqueId,
+        mosqueName,
+        language,
+        message: `🔴 Live Broadcast Started - ${mosqueName} is now broadcasting live with real-time translation`,
+        timestamp: new Date()
+      });
+    });
+
+    return true;
+  } catch (error) {
+    console.error('Error sending broadcast notifications:', error);
+    return false;
+  }
+}
+
 // Socket.IO connection handling with authentication
 io.on('connection', (socket) => {
-  console.log(`Client connected: ${socket.id}`);
+  console.log(`🔌 Client connected: ${socket.id}`);
   
   connectedClients.set(socket.id, {
     id: socket.id,
@@ -96,9 +164,11 @@ io.on('connection', (socket) => {
   // Handle authentication for socket connections
   socket.on('authenticate', async (data, callback) => {
     try {
+      console.log('🔐 Socket authentication attempt for:', socket.id);
       const { token } = data;
-      
+
       if (token) {
+        console.log('🔑 Token provided, verifying...');
         // Verify JWT token (simplified for socket)
         const jwt = require('jsonwebtoken');
         const decoded = jwt.verify(token, config.jwt.secret);
@@ -106,12 +176,47 @@ io.on('connection', (socket) => {
         const user = await User.findById(decoded.userId);
         
         if (user && user.isActive) {
+          console.log('✅ User authenticated:', user.email, 'Type:', user.userType);
+          console.log('🔍 User details:', {
+            id: user._id,
+            email: user.email,
+            userType: user.userType,
+            mosqueName: user.mosqueName,
+            isActive: user.isActive
+          });
+
           const client = connectedClients.get(socket.id);
           client.isAuthenticated = true;
           client.userId = user._id;
           client.userType = user.userType;
           client.user = user;
-          
+
+          // Initialize mosque entry if this is a mosque user
+          if (user.userType === 'mosque') {
+            if (!mosques.has(user._id.toString())) {
+              mosques.set(user._id.toString(), {
+                id: user._id.toString(),
+                name: user.mosqueName,
+                isLive: false,
+                isActive: true,
+                currentBroadcast: null,
+                currentSession: null
+              });
+              console.log('🕌 Initialized mosque entry:', user.mosqueName);
+            }
+
+            // Check if this mosque has any disconnected live sessions and restore them
+            for (const [sessionId, session] of activeSessions.entries()) {
+              if (session.mosqueId === user._id.toString() && session.broadcasterDisconnected) {
+                console.log(`🔄 Mosque broadcaster reconnected, restoring session ${sessionId}`);
+                session.broadcasterDisconnected = false;
+                session.disconnectedAt = null;
+                client.currentSession = sessionId;
+                break;
+              }
+            }
+          }
+
           callback({ success: true, userType: user.userType });
           console.log(`Client ${socket.id} authenticated as ${user.userType}`);
           return;
@@ -620,11 +725,188 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle completed audio recording with full audio data
-  socket.on('audio_recording_complete', async (data) => {
+  // Handle broadcast start (sets session to live status)
+  socket.on('start_broadcast', async (data, callback) => {
+    try {
+      const client = connectedClients.get(socket.id);
+
+      console.log('🔍 start_broadcast - Client info:', {
+        socketId: socket.id,
+        hasClient: !!client,
+        isAuthenticated: client?.isAuthenticated,
+        userType: client?.userType,
+        userId: client?.userId,
+        mosqueName: client?.user?.mosqueName
+      });
+
+      if (!client || !client.isAuthenticated || client.userType !== 'mosque') {
+        console.log('❌ start_broadcast authentication failed:', {
+          hasClient: !!client,
+          isAuthenticated: client?.isAuthenticated,
+          userType: client?.userType,
+          expectedUserType: 'mosque'
+        });
+        callback && callback({ success: false, error: 'Mosque authentication required' });
+        return;
+      }
+
+      const { sessionId, mosqueId, mosqueName, language, enableVoiceRecognition, enableRecording } = data;
+
+      // Update session status to live
+      let session = activeSessions.get(sessionId);
+      console.log('🔍 Looking for session:', sessionId, 'Found:', !!session);
+
+      if (!session) {
+        // Create new session if it doesn't exist
+        session = {
+          id: sessionId,
+          sessionId,
+          mosqueId,
+          mosqueName,
+          languages: [language],
+          participants: new Set(),
+          startedAt: new Date(),
+          isActive: true,
+          isLive: false,
+          status: 'active',
+          mosqueUserId: client.userId,
+          broadcaster: client.deviceId || socket.id
+        };
+        activeSessions.set(sessionId, session);
+        console.log('📝 Created new session in activeSessions:', sessionId);
+        console.log('📝 activeSessions Map now has', activeSessions.size, 'sessions');
+      } else {
+        console.log('📝 Using existing session:', sessionId);
+      }
+
+      // Update session to live status
+      session.isLive = true;
+      session.status = 'live';
+      session.broadcastStartedAt = new Date();
+
+      // Update broadcast details
+      session.broadcastDetails = {
+        isVoiceRecognitionActive: enableVoiceRecognition || false,
+        isRecordingActive: enableRecording || false,
+        currentProvider: 'munsit',
+        lastTranscriptionAt: null,
+        totalTranscriptions: 0
+      };
+
+      // Update mosque status
+      const mosque = mosques.get(mosqueId);
+      if (mosque) {
+        mosque.isLive = true;
+        mosque.currentBroadcast = sessionId;
+      }
+
+      // Save session to database
+      const Session = require('./models/Session');
+      await Session.findOneAndUpdate(
+        { sessionId },
+        {
+          status: 'live',
+          isLive: true,
+          'broadcastDetails.isVoiceRecognitionActive': enableVoiceRecognition || false,
+          'broadcastDetails.isRecordingActive': enableRecording || false,
+          'broadcastDetails.currentProvider': 'munsit'
+        },
+        { upsert: true, new: true }
+      );
+
+      // Notify all clients about live broadcast
+      const broadcastData = {
+        sessionId,
+        mosqueId,
+        mosqueName,
+        language,
+        startedAt: new Date(),
+        isLive: true,
+        enableVoiceRecognition,
+        enableRecording
+      };
+
+      console.log('📡 Broadcasting start event to all connected clients:', broadcastData);
+      io.emit('broadcast_started', broadcastData);
+
+      // Send notifications to users following this mosque
+      await sendBroadcastNotifications(mosqueId, mosqueName, language);
+
+      callback && callback({ success: true, sessionId, isLive: true });
+      console.log(`🔴 Live broadcast started for session ${sessionId} by mosque ${mosqueName}`);
+
+    } catch (error) {
+      console.error('Error starting broadcast:', error);
+      callback && callback({ success: false, error: error.message });
+    }
+  });
+
+  // Handle broadcast stop (removes live status)
+  socket.on('stop_broadcast', async (data, callback) => {
     try {
       const client = connectedClients.get(socket.id);
       if (!client || !client.isAuthenticated || client.userType !== 'mosque') {
+        callback && callback({ success: false, error: 'Mosque authentication required' });
+        return;
+      }
+
+      const { sessionId, mosqueId, duration, listeners } = data;
+
+      // Update session status
+      const session = activeSessions.get(sessionId);
+      if (session) {
+        session.isLive = false;
+        session.status = 'ended';
+        session.endedAt = new Date();
+        session.duration = duration;
+        session.totalListeners = listeners;
+      }
+
+      // Update mosque status
+      const mosque = mosques.get(mosqueId);
+      if (mosque) {
+        mosque.isLive = false;
+        mosque.currentBroadcast = null;
+      }
+
+      // Update session in database
+      const Session = require('./models/Session');
+      await Session.findOneAndUpdate(
+        { sessionId },
+        {
+          status: 'ended',
+          isLive: false,
+          endedAt: new Date(),
+          duration: duration,
+          'stats.totalParticipants': listeners
+        }
+      );
+
+      // Notify all clients about broadcast end
+      io.emit('broadcast_ended', {
+        sessionId,
+        mosqueId,
+        endedAt: new Date(),
+        duration,
+        listeners
+      });
+
+      callback && callback({ success: true });
+      console.log(`⏹️ Live broadcast stopped for session ${sessionId}`);
+
+    } catch (error) {
+      console.error('Error stopping broadcast:', error);
+      callback && callback({ success: false, error: error.message });
+    }
+  });
+
+  // Handle completed audio recording with full audio data
+  socket.on('audio_recording_complete', async (data) => {
+    try {
+      console.log('🎵 Received completed audio recording with data');
+      const client = connectedClients.get(socket.id);
+      if (!client || !client.isAuthenticated || client.userType !== 'mosque') {
+        console.log('❌ Client not authenticated or not mosque type');
         return;
       }
 
@@ -634,16 +916,40 @@ io.on('connection', (socket) => {
 
       if (audioData && audioData.length > 0) {
         console.log(`📁 Saving complete audio file: ${audioData.length} bytes for session: ${sessionId}`);
+        console.log('🔍 Audio data type:', typeof audioData, 'Is array:', Array.isArray(audioData));
 
         try {
+          // Get the authenticated user's information
+          const client = connectedClients.get(socket.id);
+          const User = require('./models/User');
+          const user = await User.findById(client.userId);
+
+          if (!user) {
+            console.error('❌ User not found for audio recording');
+            return;
+          }
+
+          console.log('🔍 User data for mosque name:', {
+            name: user.name,
+            mosqueName: user.mosqueName,
+            organizationName: user.organizationName,
+            email: user.email
+          });
+
+          // Extract mosque name from user data
+          const mosqueName = user.mosqueName || user.organizationName || user.name || `Mosque_${user.email}` || 'Unknown Mosque';
+          console.log('📝 Using mosque name:', mosqueName);
+
           // Save the complete audio file to backend storage
           const recording = await VoiceRecognitionService.saveCompleteAudioFile(sessionId, {
-            audioData,
+            audioBuffer: audioData,
+            mosqueId: user._id,           // Use the actual user's ObjectId
+            mosqueName: mosqueName,
             provider,
-            mosque_id,
             format: format || 'm4a',
             fileName: fileName || `recording_${sessionId}_${Date.now()}.m4a`,
             duration: duration || 0,
+            audioSessionId: null,         // We'll create this if needed
             deviceInfo: {
               platform: 'react-native',
               socketId: socket.id
@@ -697,14 +1003,38 @@ io.on('connection', (socket) => {
           // Unregister translator if applicable
           MultiLanguageTranslationService.unregisterTranslator(socket.id);
 
-          // If broadcaster disconnects, end the session
+          // If broadcaster disconnects, give them time to reconnect (for mosque broadcasts)
           if (client.deviceId === session.broadcaster) {
-            io.to(client.currentSession).emit('session_ended', {
-              sessionId: client.currentSession,
-              endedAt: new Date(),
-              reason: 'Broadcaster disconnected',
-            });
-            activeSessions.delete(client.currentSession);
+            if (client.userType === 'mosque' && session.isLive) {
+              // For live mosque broadcasts, don't immediately end session
+              // Mark as temporarily disconnected and give 30 seconds to reconnect
+              session.broadcasterDisconnected = true;
+              session.disconnectedAt = new Date();
+
+              console.log(`⚠️ Mosque broadcaster temporarily disconnected for session ${client.currentSession}, waiting for reconnection...`);
+
+              // Set a timeout to end the session if broadcaster doesn't reconnect
+              setTimeout(() => {
+                const currentSession = activeSessions.get(client.currentSession);
+                if (currentSession && currentSession.broadcasterDisconnected) {
+                  console.log(`❌ Mosque broadcaster did not reconnect, ending session ${client.currentSession}`);
+                  io.to(client.currentSession).emit('session_ended', {
+                    sessionId: client.currentSession,
+                    endedAt: new Date(),
+                    reason: 'Broadcaster disconnected',
+                  });
+                  activeSessions.delete(client.currentSession);
+                }
+              }, 30000); // 30 seconds grace period
+            } else {
+              // For non-mosque sessions, end immediately
+              io.to(client.currentSession).emit('session_ended', {
+                sessionId: client.currentSession,
+                endedAt: new Date(),
+                reason: 'Broadcaster disconnected',
+              });
+              activeSessions.delete(client.currentSession);
+            }
           } else {
             // Notify other participants
             socket.to(client.currentSession).emit('participant_left', {
@@ -939,6 +1269,72 @@ app.get('/api/mosques/:id', optionalAuth, async (req, res) => {
   }
 });
 
+// Get data for multiple mosques by IDs (for followed mosques)
+app.post('/api/mosques/by-ids', async (req, res) => {
+  try {
+    const { mosqueIds } = req.body;
+
+    if (!Array.isArray(mosqueIds) || mosqueIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'mosqueIds array is required'
+      });
+    }
+
+    // Limit to prevent abuse
+    if (mosqueIds.length > 50) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum 50 mosque IDs allowed'
+      });
+    }
+
+    // Query mosques from database
+    const mosques = await User.find({
+      _id: { $in: mosqueIds },
+      userType: 'mosque',
+      isActive: true
+    }).select('-password -emailVerificationToken -__v');
+
+    // Format mosque data for API response
+    const mosquesArray = mosques.map(mosque => {
+      return {
+        id: mosque._id.toString(),
+        name: mosque.mosqueName,
+        address: mosque.mosqueAddress,
+        phone: mosque.phone,
+        website: mosque.website,
+        imam: mosque.imam,
+        madhab: mosque.madhab,
+        servicesOffered: mosque.servicesOffered || [],
+        languagesSupported: mosque.languagesSupported || ['Arabic'],
+        capacity: mosque.capacity,
+        facilities: mosque.facilities || [],
+        followers: mosque.analytics?.totalFollowers || 0,
+        hasLiveTranslation: mosque.servicesOffered?.includes('Live Translation') || false,
+        distance: 0, // Will be calculated on frontend if needed
+        distanceFormatted: 'Unknown distance',
+        hasAccount: true,
+        isFollowed: true, // All requested mosques are followed
+        location: mosque.location
+      };
+    });
+
+    res.json({
+      success: true,
+      mosques: mosquesArray,
+      total: mosquesArray.length
+    });
+
+  } catch (error) {
+    console.error('Error fetching mosques by IDs:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch mosque data'
+    });
+  }
+});
+
 // Helper function to calculate distance between two points
 
 // Helper function to calculate distance between two points
@@ -957,8 +1353,20 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 // Get active translation sessions
 app.get('/api/sessions/active', (req, res) => {
+  console.log('📊 /api/sessions/active called');
+  console.log('📊 activeSessions Map size:', activeSessions.size);
+  console.log('📊 activeSessions keys:', Array.from(activeSessions.keys()));
+
   const activeSessonsArray = Array.from(activeSessions.values()).map(session => {
     const mosque = mosques.get(session.mosqueId);
+    console.log('📊 Processing session:', {
+      id: session.id,
+      mosqueId: session.mosqueId,
+      isLive: session.isLive,
+      status: session.status,
+      mosqueName: mosque ? mosque.name : 'Unknown Mosque'
+    });
+
     return {
       id: session.id,
       mosqueId: session.mosqueId,
@@ -967,10 +1375,13 @@ app.get('/api/sessions/active', (req, res) => {
       participantCount: session.participants.size,
       startedAt: session.startedAt,
       isActive: session.isActive,
+      isLive: session.isLive,
+      status: session.status,
       hasAuth: !!session.mosqueUserId
     };
   });
 
+  console.log('📊 Returning active sessions:', activeSessonsArray.length);
   res.json(activeSessonsArray);
 });
 
@@ -1107,27 +1518,35 @@ startServer();
 if (config.nodeEnv === 'development') {
   setInterval(() => {
     if (activeSessions.size > 0) {
-      const sessions = Array.from(activeSessions.values());
-      const randomSession = sessions[Math.floor(Math.random() * sessions.length)];
+      const sessions = Array.from(activeSessions.values()).filter(session => session.isLive);
+      if (sessions.length > 0) {
+        const randomSession = sessions[Math.floor(Math.random() * sessions.length)];
 
-      const mockTranslations = [
-        { arabic: 'بسم الله الرحمن الرحيم', english: 'In the name of Allah, the Most Gracious, the Most Merciful' },
-        { arabic: 'الحمد لله رب العالمين', english: 'All praise is due to Allah, Lord of all the worlds' },
-        { arabic: 'الرحمن الرحيم', english: 'The Most Gracious, the Most Merciful' },
-        { arabic: 'مالك يوم الدين', english: 'Master of the Day of Judgment' },
-      ];
+        const mockTranslations = [
+          { arabic: 'بسم الله الرحمن الرحيم', english: 'In the name of Allah, the Most Gracious, the Most Merciful' },
+          { arabic: 'الحمد لله رب العالمين', english: 'All praise is due to Allah, Lord of all the worlds' },
+          { arabic: 'الرحمن الرحيم', english: 'The Most Gracious, the Most Merciful' },
+          { arabic: 'مالك يوم الدين', english: 'Master of the Day of Judgment' },
+        ];
 
-      const randomTranslation = mockTranslations[Math.floor(Math.random() * mockTranslations.length)];
-      const translation = {
-        id: Date.now().toString(),
-        arabicText: randomTranslation.arabic,
-        englishText: randomTranslation.english,
-        timestamp: new Date().toISOString(),
-        sessionId: randomSession.id,
-      };
+        const randomTranslation = mockTranslations[Math.floor(Math.random() * mockTranslations.length)];
+        const translation = {
+          id: Date.now().toString(),
+          arabicText: randomTranslation.arabic,
+          englishText: randomTranslation.english,
+          timestamp: new Date().toISOString(),
+          sessionId: randomSession.id,
+        };
 
-      randomSession.translations.set(translation.id, translation);
-      io.to(randomSession.id).emit('translation_update', translation);
+        // Initialize translations Map if it doesn't exist
+        if (!randomSession.translations) {
+          randomSession.translations = new Map();
+        }
+
+        randomSession.translations.set(translation.id, translation);
+        io.to(randomSession.id).emit('translation_update', translation);
+        console.log('📝 Demo translation sent for session:', randomSession.id);
+      }
     }
   }, 15000); // Send a translation every 15 seconds for demo
 }

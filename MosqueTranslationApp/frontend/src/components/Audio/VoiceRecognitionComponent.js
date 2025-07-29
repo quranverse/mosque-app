@@ -67,13 +67,13 @@ const VoiceRecognitionComponent = forwardRef(({
   };
 
   // Start audio capture
-  const startAudioCapture = async () => {
+  const startAudioCapture = async (options = {}) => {
     try {
-      console.log('🎙️ Starting REAL audio capture...');
+      console.log('🎙️ Starting REAL audio capture with options:', options);
       setIsRecording(true);
 
       // Start real audio recording
-      await startRealAudioRecording();
+      await startRealAudioRecording(options);
 
       console.log('✅ Real audio capture started successfully');
 
@@ -84,7 +84,7 @@ const VoiceRecognitionComponent = forwardRef(({
         'Please allow microphone access to use voice recognition.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Retry', onPress: () => startAudioCapture() }
+          { text: 'Retry', onPress: () => startAudioCapture(options) }
         ]
       );
       throw error;
@@ -103,24 +103,28 @@ const VoiceRecognitionComponent = forwardRef(({
           // Stop the real recording
           const result = await audioRecordingRef.current.stopAndUnloadAsync();
           console.log('🛑 Real recording stopped, result:', result);
-          
-          // Get URI from the recording
-          const uri = result?.uri || audioRecordingRef.current.getURI?.() || null;
-          console.log('📁 Recording URI:', uri);
-          
+
+          // Get URI from the recording using getURI() method
+          const uri = audioRecordingRef.current.getURI();
+          console.log('📁 Recording URI from getURI():', uri);
+
           if (uri) {
             setRecordingPath(uri);
+            console.log('✅ URI extracted successfully');
           } else {
             console.warn('⚠️ No URI found in recording result');
           }
 
           // Send final audio file to backend for storage
-          if (socketRef.current && result) {
+          if (socketRef.current && uri) {
             try {
-              // Read the complete audio file
-              const finalAudioData = await readCompleteAudioFile(result);
+              // Read the complete audio file using the URI
+              const finalAudioData = await readCompleteAudioFile(uri);
               
               if (finalAudioData) {
+                console.log('🔌 Socket available:', !!socketRef.current);
+                console.log('🔌 Socket connected:', socketRef.current?.connected);
+
                 socketRef.current.emit('audio_recording_complete', {
                   sessionId: currentSessionId,
                   audioData: finalAudioData,
@@ -172,9 +176,9 @@ const VoiceRecognitionComponent = forwardRef(({
   };
 
   // Real audio recording implementation
-  const startRealAudioRecording = async () => {
+  const startRealAudioRecording = async (options = {}) => {
     try {
-      console.log('🎤 Starting REAL audio recording...');
+      console.log('🎤 Starting REAL audio recording with options:', options);
 
       // Try to import Audio from expo-av
       let Audio;
@@ -295,6 +299,8 @@ const VoiceRecognitionComponent = forwardRef(({
       // Get the URI from the recording result
       const uri = recordingResult.uri || recordingResult;
 
+
+
       if (!uri || typeof uri !== 'string') {
         console.error('❌ No valid URI found in recording result:', recordingResult);
         return null;
@@ -302,37 +308,42 @@ const VoiceRecognitionComponent = forwardRef(({
 
       console.log(`📁 Reading complete audio file from: ${uri}`);
 
-      // For React Native, we'll use FileSystem to read the audio file
-      const { FileSystem } = require('expo-file-system');
+      // Try to use FileSystem to read the audio file
+      try {
+        const FileSystem = require('expo-file-system');
 
-      if (!FileSystem) {
-        console.error('❌ FileSystem not available');
-        return null;
+        if (FileSystem && FileSystem.readAsStringAsync) {
+          // Check if file exists
+          const fileInfo = await FileSystem.getInfoAsync(uri);
+          if (!fileInfo.exists) {
+            console.error('❌ Audio file does not exist:', uri);
+            return null;
+          }
+
+          console.log(`📁 File exists, size: ${fileInfo.size} bytes`);
+
+          // Read the audio file as base64
+          const audioBase64 = await FileSystem.readAsStringAsync(uri, {
+            encoding: FileSystem.EncodingType?.Base64 || 'base64',
+          });
+
+          // Convert base64 to array buffer for streaming
+          const binaryString = atob(audioBase64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+
+          console.log(`📤 Read complete audio file: ${bytes.length} bytes`);
+          return Array.from(bytes); // Convert to regular array for JSON serialization
+        }
+      } catch (fileSystemError) {
+        console.warn('⚠️ FileSystem not available, using fallback approach:', fileSystemError);
       }
 
-      // Check if file exists
-      const fileInfo = await FileSystem.getInfoAsync(uri);
-      if (!fileInfo.exists) {
-        console.error('❌ Audio file does not exist:', uri);
-        return null;
-      }
-
-      console.log(`📁 File exists, size: ${fileInfo.size} bytes`);
-
-      // Read the audio file as base64
-      const audioBase64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      // Convert base64 to array buffer for streaming
-      const binaryString = atob(audioBase64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      console.log(`📤 Read complete audio file: ${bytes.length} bytes`);
-      return Array.from(bytes); // Convert to regular array for JSON serialization
+      // Fallback: Return the URI for the backend to handle
+      console.log('📤 Returning audio URI for backend processing:', uri);
+      return { uri, type: 'audio_uri' };
 
     } catch (error) {
       console.error('❌ Error reading complete audio file:', error);

@@ -11,8 +11,9 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import MosqueService from '../services/MosqueService';
+import MosqueService from '../services/MosqueService/MosqueService';
 import LocationService from '../services/LocationService/LocationService';
+import AuthService from '../services/AuthService/AuthService';
 import EmptyState from '../components/Common/EmptyState';
 import ErrorHandler from '../utils/ErrorHandler';
 
@@ -22,9 +23,16 @@ const MosqueManagementScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('followed'); // 'followed' or 'discover'
+  const [isMosqueAdmin, setIsMosqueAdmin] = useState(false);
 
   useEffect(() => {
-    loadMosques();
+    // Check if user is mosque admin
+    setIsMosqueAdmin(AuthService.isMosqueAdmin());
+
+    // Only load mosques if user is not a mosque admin
+    if (!AuthService.isMosqueAdmin()) {
+      loadMosques();
+    }
   }, []);
 
   const loadMosques = async () => {
@@ -196,25 +204,27 @@ const MosqueManagementScreen = ({ navigation }) => {
             <Text style={styles.mosqueAddress}>{mosque.address || 'Address not available'}</Text>
           </View>
 
-          <TouchableOpacity
-            style={[
-              styles.followButton,
-              isFollowed && styles.unfollowButton
-            ]}
-            onPress={() => toggleFollowMosque(mosque)}
-          >
-            <Icon
-              name={isFollowed ? "favorite" : "favorite-border"}
-              size={20}
-              color={isFollowed ? "#fff" : "#2E7D32"}
-            />
-            <Text style={[
-              styles.followButtonText,
-              isFollowed && styles.unfollowButtonText
-            ]}>
-              {isFollowed ? 'Unfollow' : 'Follow'}
-            </Text>
-          </TouchableOpacity>
+          {!isMosqueAdmin && (
+            <TouchableOpacity
+              style={[
+                styles.followButton,
+                isFollowed && styles.unfollowButton
+              ]}
+              onPress={() => toggleFollowMosque(mosque)}
+            >
+              <Icon
+                name={isFollowed ? "favorite" : "favorite-border"}
+                size={20}
+                color={isFollowed ? "#fff" : "#2E7D32"}
+              />
+              <Text style={[
+                styles.followButtonText,
+                isFollowed && styles.unfollowButtonText
+              ]}>
+                {isFollowed ? 'Unfollow' : 'Follow'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
       <View style={styles.mosqueDetails}>
@@ -236,6 +246,35 @@ const MosqueManagementScreen = ({ navigation }) => {
     </View>
     );
   };
+
+  // Show different content for mosque admins
+  if (isMosqueAdmin) {
+    return (
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Icon name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Mosque Management</Text>
+        </View>
+
+        {/* Mosque Admin Message */}
+        <View style={styles.mosqueAdminContainer}>
+          <EmptyState
+            icon="mosque"
+            title="Mosque Account"
+            message="This feature is designed for individual users to follow and discover mosques. As a mosque account, you can manage your mosque's profile and broadcasting settings instead."
+            actionText="Go to Broadcasting"
+            onActionPress={() => navigation.navigate('MainTabs', { screen: 'MainContent' })}
+          />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -455,6 +494,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginLeft: 4,
+  },
+  mosqueAdminContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   emptyState: {
     alignItems: 'center',

@@ -94,40 +94,53 @@ async function testConnectivity(ip) {
 
 // Main function
 async function main() {
-  console.log('🔧 Auto-updating IP configuration for Android connectivity...\n');
-  
+  console.log('🔧 IP Configuration Update Tool (Legacy - App now auto-detects IP)\n');
+  console.log('ℹ️  Note: The app now automatically detects network changes and updates');
+  console.log('   the API connection. This script is mainly for troubleshooting.\n');
+
   // Get machine IP
   const machineIP = getMachineIP();
   console.log(`Detected machine IP: ${machineIP}\n`);
-  
-  // Test connectivity
-  console.log('Testing server connectivity...');
-  const isAccessible = await testConnectivity(machineIP);
-  
-  if (!isAccessible) {
-    console.log('\n⚠️  Server is not accessible on this IP.');
-    console.log('Make sure your backend server is running on port 8080');
-    console.log('and listening on all interfaces (0.0.0.0:8080).\n');
-    
-    console.log('To start the server:');
-    console.log('cd backend && npm start\n');
-    
-    // Still update the config even if server is not running
-    console.log('Updating configuration anyway...');
+
+  // Test connectivity to multiple IPs
+  console.log('Testing server connectivity on multiple IPs...');
+  const testIPs = [
+    machineIP,
+    'localhost',
+    '127.0.0.1',
+    '10.0.2.2', // Android emulator
+    '192.168.1.100',
+    '192.168.0.100'
+  ];
+
+  let workingIP = null;
+  for (const ip of testIPs) {
+    const isAccessible = await testConnectivity(ip);
+    if (isAccessible) {
+      workingIP = ip;
+      break;
+    }
   }
-  
-  // Update the configuration
-  updateApiConfig(machineIP);
-  
-  console.log('\n📱 Next steps:');
-  console.log('1. Make sure your backend server is running: cd backend && npm start');
-  console.log('2. Restart your React Native app to pick up the new configuration');
-  console.log('3. Test the login functionality');
-  
-  console.log('\n🌐 Your app will now connect to:');
-  console.log(`   Android: http://${machineIP}:8080/api`);
-  console.log(`   iOS: http://${machineIP}:8080/api`);
-  console.log(`   Web: http://localhost:8080/api`);
+
+  if (!workingIP) {
+    console.log('\n❌ No working IP found. Make sure your backend server is running:');
+    console.log('   cd backend && npm start\n');
+    console.log('💡 The app will automatically detect the correct IP when the server is available.');
+    return;
+  }
+
+  console.log(`\n✅ Found working server at: ${workingIP}`);
+  console.log('\n📱 The app will automatically use this IP when it detects network changes.');
+  console.log('   No manual configuration needed!\n');
+
+  console.log('🔄 If you want to force the app to refresh its connection:');
+  console.log('   1. Change networks (WiFi/cellular)');
+  console.log('   2. Or restart the app');
+  console.log('   3. The app will automatically find the best connection\n');
+
+  console.log('🌐 Current automatic detection will try:');
+  console.log(`   Primary: http://${workingIP}:8080/api`);
+  console.log('   Fallbacks: localhost, 127.0.0.1, 10.0.2.2, and other common IPs');
 }
 
 // Run the script

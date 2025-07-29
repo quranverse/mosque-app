@@ -17,8 +17,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import MultiLanguageTranslationView from '../../components/Translation/MultiLanguageTranslationView';
 import VoiceRecognitionComponent from '../../components/Audio/VoiceRecognitionComponent';
 import LiveBroadcastList from '../../components/Translation/LiveBroadcastList';
+
+// import AuthenticationPrompt from '../../components/Common/AuthenticationPrompt';
 import multiLanguageTranslationService from '../../services/MultiLanguageTranslationService';
 import AuthService from '../../services/AuthService/AuthService';
+import ApiService from '../../services/ApiService/ApiService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -53,6 +56,8 @@ const TranslationScreen = ({ navigation, route }) => {
     }
   }, [route.params]);
 
+
+
   const initializeScreen = async () => {
     try {
       setLoading(true);
@@ -64,6 +69,8 @@ const TranslationScreen = ({ navigation, route }) => {
       const currentUser = AuthService.getCurrentUser();
       const currentUserType = currentUser?.type || 'individual';
       setUserType(currentUserType);
+
+
 
       // Initialize multi-language translation service (with fallback)
       try {
@@ -101,7 +108,6 @@ const TranslationScreen = ({ navigation, route }) => {
   const loadAvailableMosques = async () => {
     try {
       // Use ApiService instead of direct fetch
-      const { default: ApiService } = await import('../../services/ApiService');
       const response = await ApiService.get('/mosques?lat=40.7128&lng=-74.0060');
 
       if (response && Array.isArray(response)) {
@@ -121,46 +127,14 @@ const TranslationScreen = ({ navigation, route }) => {
       }
     } catch (error) {
       console.error('Failed to load mosques:', error);
-      // Fallback to database-based mock data that matches real mosque structure
-      setAvailableMosques([
-        {
-          id: '687979e29bd27fe81941daa2',
-          name: 'Central Mosque',
-          address: '123 Main Street, New York, NY 10001',
-          distance: 0.5,
-          hasLiveTranslation: true,
-          languagesSupported: ['Arabic', 'English', 'Urdu'],
-          followers: 150,
-          hasAccount: true
-        },
-        {
-          id: '687979e29bd27fe81941daa3',
-          name: 'Islamic Center of Queens',
-          address: '789 Queens Boulevard, Queens, NY 11373',
-          distance: 1.2,
-          hasLiveTranslation: true,
-          languagesSupported: ['Arabic', 'English', 'Bengali', 'Urdu'],
-          followers: 203,
-          hasAccount: true
-        },
-        {
-          id: '687a993ca9dab7a9ec7311a6',
-          name: 'Masjid abo malik',
-          address: 'street 12, Hamburg, 50000, DE',
-          distance: 2.1,
-          hasLiveTranslation: true,
-          languagesSupported: ['Arabic', 'English'],
-          followers: 80,
-          hasAccount: true
-        }
-      ]);
+      // Set empty array - no fallback mock data
+      setAvailableMosques([]);
     }
   };
 
   const loadActiveSessions = async () => {
     try {
       // Use ApiService instead of direct fetch
-      const { default: ApiService } = await import('../../services/ApiService');
       const response = await ApiService.get('/sessions/active');
 
       if (response && response.success && Array.isArray(response.sessions)) {
@@ -292,7 +266,6 @@ const TranslationScreen = ({ navigation, route }) => {
     try {
       setNetworkStatus('checking');
       console.log('Testing connectivity to:', API_BASE_URL);
-      const { default: ApiService } = await import('../../services/ApiService');
       const response = await ApiService.get('/status');
       console.log('Connectivity test successful:', response);
       setNetworkStatus('connected');
@@ -337,6 +310,8 @@ const TranslationScreen = ({ navigation, route }) => {
       Alert.alert('Error', 'This broadcast is not currently available.');
     }
   };
+
+
 
   const showTranslationViewAnimated = () => {
     Animated.parallel([
@@ -427,9 +402,9 @@ const TranslationScreen = ({ navigation, route }) => {
       </View>
 
       {!isConnected ? (
-        /* Show different content based on user type */
+        /* Show different content based on user type and authentication */
         userType === AuthService.USER_TYPES.INDIVIDUAL || userType === AuthService.USER_TYPES.ANONYMOUS ? (
-          /* Individual User: Enhanced Live Broadcast List */
+          /* Individual/Anonymous User: Enhanced Live Broadcast List */
           <LiveBroadcastList
             onJoinBroadcast={handleJoinBroadcast}
             userLocation={userLocation}
@@ -513,7 +488,26 @@ const TranslationScreen = ({ navigation, route }) => {
               Mosques with translation services in your area
             </Text>
 
-            {availableMosques.map((mosque) => (
+            {availableMosques.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Icon name="location-off" size={48} color="#ccc" />
+                <Text style={styles.emptyTitle}>No mosques found</Text>
+                <Text style={styles.emptySubtitle}>
+                  {networkStatus === 'connected'
+                    ? 'No mosques with translation services found in your area. Try refreshing or check your location settings.'
+                    : 'Unable to load mosque data. Please check your internet connection and try again.'
+                  }
+                </Text>
+                <TouchableOpacity
+                  style={styles.retryButton}
+                  onPress={handleRefresh}
+                >
+                  <Icon name="refresh" size={20} color="#2E7D32" />
+                  <Text style={styles.retryText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              availableMosques.map((mosque) => (
               <TouchableOpacity
                 key={mosque.id}
                 style={[
@@ -589,7 +583,8 @@ const TranslationScreen = ({ navigation, route }) => {
                   </View>
                 )}
               </TouchableOpacity>
-            ))}
+              ))
+            )}
           </View>
         </ScrollView>
         )
@@ -599,8 +594,9 @@ const TranslationScreen = ({ navigation, route }) => {
           {/* Voice Recognition Component (Imam/Mosque Admin Only) */}
           {userType === AuthService.USER_TYPES.MOSQUE_ADMIN && (
             <VoiceRecognitionComponent
-              sessionId={selectedSession?.sessionId}
-              socket={socket}
+              socketRef={{ current: socket }}
+              currentSessionId={selectedSession?.sessionId}
+              currentProvider="munsit"
               onTranscription={(transcription) => {
                 console.log('Voice transcription:', transcription);
               }}
@@ -646,7 +642,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2E7D32',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    paddingTop: 50,
+    paddingTop: 12,
   },
   backButton: {
     padding: 8,
@@ -984,6 +980,41 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#fff',
     opacity: 0.8,
+  },
+  emptyState: {
+    alignItems: 'center',
+    padding: 3,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginVertical: 1,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#666',
+    marginTop: 5,
+    marginBottom: 5,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 15,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E8',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  retryText: {
+    fontSize: 14,
+    color: '#2E7D32',
+    fontWeight: '500',
   },
 });
 

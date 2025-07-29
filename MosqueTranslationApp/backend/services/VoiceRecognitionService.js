@@ -170,16 +170,18 @@ class VoiceRecognitionService {
   // Save complete audio file to backend storage
   async saveCompleteAudioFile(sessionId, audioFileData) {
     try {
-      const { audioBuffer, mosqueId, provider, format, fileName, duration, deviceInfo } = audioFileData;
+      const { audioBuffer, mosqueId, mosqueName, provider, format, fileName, duration, audioSessionId, deviceInfo } = audioFileData;
 
       // Save to backend storage using AudioRecordingService
       const recording = await AudioRecordingService.saveCompleteAudioFile(sessionId, {
         audioBuffer,
         mosqueId,
+        mosqueName,        // Add missing mosqueName
         provider,
         format,
         fileName,
         duration,
+        audioSessionId,    // Add missing audioSessionId
         deviceInfo
       });
 

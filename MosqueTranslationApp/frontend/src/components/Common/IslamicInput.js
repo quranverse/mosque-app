@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  TextInput, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity,
-  Animated 
+import {
+  View,
+  TextInput,
+  Text,
+  StyleSheet,
+  TouchableOpacity
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Colors, Typography, Spacing, BorderRadius, ComponentThemes } from '../../utils/theme';
@@ -35,15 +34,9 @@ const IslamicInput = ({
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [labelAnimation] = useState(new Animated.Value(value ? 1 : 0));
 
   const handleFocus = () => {
     setIsFocused(true);
-    Animated.timing(labelAnimation, {
-      toValue: 1,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
 
     // Scroll to input when focused (if onFocus prop is provided)
     if (props.onFocus) {
@@ -53,13 +46,6 @@ const IslamicInput = ({
 
   const handleBlur = () => {
     setIsFocused(false);
-    if (!value) {
-      Animated.timing(labelAnimation, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: false,
-      }).start();
-    }
   };
 
   const togglePasswordVisibility = () => {
@@ -86,60 +72,50 @@ const IslamicInput = ({
 
   const getInputStyle = () => {
     const baseStyle = [styles.input];
-    
+
     if (multiline) {
       baseStyle.push(styles.multilineInput);
     }
-    
+
     if (leftIcon) {
       baseStyle.push(styles.inputWithLeftIcon);
     }
-    
+
     if (rightIcon || secureTextEntry) {
       baseStyle.push(styles.inputWithRightIcon);
     }
-    
+
     return [...baseStyle, inputStyle];
   };
 
-  const animatedLabelStyle = {
-    position: 'absolute',
-    left: leftIcon ? 40 : Spacing.md,
-    top: labelAnimation.interpolate({
-      inputRange: [0, 1],
-      outputRange: [multiline ? 16 : 12, -8],
-    }),
-    fontSize: labelAnimation.interpolate({
-      inputRange: [0, 1],
-      outputRange: [Typography.sizes.base, Typography.sizes.sm],
-    }),
-    color: labelAnimation.interpolate({
-      inputRange: [0, 1],
-      outputRange: [Colors.text.secondary, isFocused ? Colors.primary.main : Colors.text.secondary],
-    }),
-    backgroundColor: Colors.neutral.surface,
-    paddingHorizontal: 4,
-    zIndex: 1,
+  const getLabelStyle = () => {
+    return [
+      styles.label,
+      {
+        color: isFocused ? Colors.primary.main : Colors.text.secondary,
+      },
+      labelStyle
+    ];
   };
 
   return (
     <View style={styles.wrapper}>
       {label && (
-        <Animated.Text style={[animatedLabelStyle, labelStyle]}>
+        <Text style={getLabelStyle()}>
           {label}{required && ' *'}
-        </Animated.Text>
+        </Text>
       )}
-      
+
       <View style={getContainerStyle()}>
         {leftIcon && (
-          <Icon 
-            name={leftIcon} 
-            size={20} 
+          <Icon
+            name={leftIcon}
+            size={20}
             color={isFocused ? Colors.primary.main : Colors.text.secondary}
             style={styles.leftIcon}
           />
         )}
-        
+
         <TextInput
           style={getInputStyle()}
           value={value}
@@ -157,40 +133,40 @@ const IslamicInput = ({
           onBlur={handleBlur}
           {...props}
         />
-        
+
         {secureTextEntry && (
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={togglePasswordVisibility}
             style={styles.rightIcon}
           >
-            <Icon 
-              name={showPassword ? 'visibility-off' : 'visibility'} 
-              size={20} 
+            <Icon
+              name={showPassword ? 'visibility-off' : 'visibility'}
+              size={20}
               color={Colors.text.secondary}
             />
           </TouchableOpacity>
         )}
-        
+
         {rightIcon && !secureTextEntry && (
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={onRightIconPress}
             style={styles.rightIcon}
           >
-            <Icon 
-              name={rightIcon} 
-              size={20} 
+            <Icon
+              name={rightIcon}
+              size={20}
               color={isFocused ? Colors.primary.main : Colors.text.secondary}
             />
           </TouchableOpacity>
         )}
       </View>
-      
+
       {error && (
         <Text style={[styles.errorText, errorStyle]}>
           {error}
         </Text>
       )}
-      
+
       {maxLength && (
         <Text style={styles.characterCount}>
           {value ? value.length : 0}/{maxLength}
@@ -203,6 +179,12 @@ const IslamicInput = ({
 const styles = StyleSheet.create({
   wrapper: {
     marginBottom: Spacing.lg,
+  },
+  label: {
+    fontSize: Typography.sizes.sm,
+    fontWeight: Typography.weights.medium,
+    marginBottom: Spacing.xs,
+    marginLeft: Spacing.xs,
   },
   container: {
     flexDirection: 'row',
@@ -235,7 +217,6 @@ const styles = StyleSheet.create({
   },
   multilineInput: {
     minHeight: 80,
-    paddingTop: Spacing.lg,
   },
   inputWithLeftIcon: {
     paddingLeft: Spacing.sm,

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import ApiService from '../ApiService';
-import { API_ENDPOINTS } from '../../config/api';
+import ApiService from '../ApiService/ApiService';
+import { API_ENDPOINTS, API_BASE_URL } from '../../config/api';
 import ErrorHandler from '../../utils/ErrorHandler';
 
 class AuthService {
@@ -332,6 +332,9 @@ class AuthService {
           type: userType,
           token: response.token
         };
+
+
+
         this.notifyListeners();
 
         return {
@@ -379,6 +382,13 @@ class AuthService {
    */
   static getCurrentUser() {
     return this.currentUser;
+  }
+
+  /**
+   * Get the current user's authentication token
+   */
+  static getToken() {
+    return this.currentUser?.token || null;
   }
 
   /**
@@ -440,6 +450,46 @@ class AuthService {
         throw new Error('No user logged in');
       }
 
+      // If user has a token (authenticated), try to update on server
+      if (this.currentUser.token && !this.isAnonymous()) {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/user/profile`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${this.currentUser.token}`,
+            },
+            body: JSON.stringify(updates),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.message || 'Failed to update profile on server');
+          }
+
+          // Update local storage with server response
+          const updatedUser = {
+            ...this.currentUser,
+            ...data.user,
+            updatedAt: new Date().toISOString(),
+          };
+
+          await this.storeUserData(updatedUser, this.currentUser.token);
+          this.currentUser = updatedUser;
+          this.notifyListeners();
+
+          return {
+            success: true,
+            user: updatedUser,
+          };
+        } catch (serverError) {
+          console.warn('Server update failed, updating locally:', serverError);
+          // Fall back to local update if server fails
+        }
+      }
+
+      // Local update (for anonymous users or when server fails)
       const updatedUser = {
         ...this.currentUser,
         ...updates,
@@ -456,6 +506,90 @@ class AuthService {
       };
     } catch (error) {
       console.error('Error updating profile:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Upload mosque photos
+   */
+  static async uploadPhotos(formData) {
+    try {
+      if (!this.currentUser) {
+        throw new Error('No user logged in');
+      }
+
+      if (!this.currentUser.token || this.isAnonymous()) {
+        throw new Error('Authentication required for photo upload');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/user/upload-photos`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.currentUser.token}`,
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to upload photos');
+      }
+
+      return {
+        success: true,
+        photos: data.photos,
+      };
+    } catch (error) {
+      console.error('Error uploading photos:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Change user password
+   */
+  static async changePassword(currentPassword, newPassword) {
+    try {
+      if (!this.currentUser) {
+        throw new Error('No user logged in');
+      }
+
+      if (!this.currentUser.token || this.isAnonymous()) {
+        throw new Error('Password change is only available for authenticated users');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.currentUser.token}`,
+        },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to change password');
+      }
+
+      return {
+        success: true,
+        message: 'Password changed successfully',
+      };
+    } catch (error) {
+      console.error('Error changing password:', error);
       return {
         success: false,
         error: error.message,
@@ -576,11 +710,21 @@ class AuthService {
 
         return { success: true, message: 'Mosque followed successfully' };
       } else {
+        // Check if user is a mosque account - mosques shouldn't follow other mosques
+        if (this.isMosqueAdmin()) {
+          return {
+            success: false,
+            error: 'Mosque accounts cannot follow other mosques. This feature is for individual users only.'
+          };
+        }
+
         // For authenticated users, use server API
-        const { default: ApiService } = await import('../ApiService');
-        const response = await ApiService.post('/user/followed-mosques', {
-          mosqueId: mosqueData.id,
-          action: 'follow'
+        const response = await ApiService.makeAuthenticatedRequest('/user/followed-mosques', {
+          method: 'POST',
+          body: {
+            mosqueId: mosqueData.id,
+            action: 'follow'
+          }
         });
 
         if (response.success) {
@@ -622,11 +766,21 @@ class AuthService {
 
         return { success: true, message: 'Mosque unfollowed successfully' };
       } else {
+        // Check if user is a mosque account - mosques shouldn't follow other mosques
+        if (this.isMosqueAdmin()) {
+          return {
+            success: false,
+            error: 'Mosque accounts cannot unfollow mosques. This feature is for individual users only.'
+          };
+        }
+
         // For authenticated users, use server API
-        const { default: ApiService } = await import('../ApiService');
-        const response = await ApiService.post('/user/followed-mosques', {
-          mosqueId: mosqueId,
-          action: 'unfollow'
+        const response = await ApiService.makeAuthenticatedRequest('/user/followed-mosques', {
+          method: 'POST',
+          body: {
+            mosqueId: mosqueId,
+            action: 'unfollow'
+          }
         });
 
         if (response.success) {
@@ -664,7 +818,6 @@ class AuthService {
         }
 
         // Fetch from server if not cached
-        const { default: ApiService } = await import('../ApiService');
         const response = await ApiService.get('/user/followed-mosques');
 
         if (response.success) {
@@ -693,6 +846,8 @@ class AuthService {
       return false;
     }
   }
+
+
 
   /**
    * Get language preference

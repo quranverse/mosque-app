@@ -397,7 +397,7 @@ class AudioRecordingService {
   // Save complete audio file to backend storage
   async saveCompleteAudioFile(sessionId, audioFileData) {
     try {
-      const { audioBuffer, mosqueId, provider, format, fileName, duration, deviceInfo } = audioFileData;
+      const { audioBuffer, mosqueId, mosqueName, provider, format, fileName, duration, audioSessionId, deviceInfo } = audioFileData;
 
       // Generate file path
       const mosqueDir = path.join(this.storageBasePath, `mosque_${mosqueId}`);
@@ -405,18 +405,55 @@ class AudioRecordingService {
 
       const filePath = path.join(mosqueDir, fileName);
 
+      // Convert audioBuffer to Buffer if it's an array
+      let bufferToWrite;
+      if (Array.isArray(audioBuffer)) {
+        bufferToWrite = Buffer.from(audioBuffer);
+        console.log(`🔄 Converted array of ${audioBuffer.length} bytes to Buffer`);
+      } else if (Buffer.isBuffer(audioBuffer)) {
+        bufferToWrite = audioBuffer;
+      } else {
+        throw new Error(`Invalid audio buffer type: ${typeof audioBuffer}`);
+      }
+
       // Write audio buffer to file
-      await fs.promises.writeFile(filePath, audioBuffer);
+      await fs.promises.writeFile(filePath, bufferToWrite);
+
+      // Create or find an AudioSession if needed
+      let finalAudioSessionId = audioSessionId;
+      if (!finalAudioSessionId) {
+        // Create a temporary AudioSession for this recording
+        const AudioSession = require('../models/AudioSession');
+        const now = new Date();
+        const tempAudioSession = new AudioSession({
+          sessionId,
+          mosqueId,
+          mosqueName,
+          status: 'ended',           // Use 'ended' instead of 'completed'
+          startedAt: now,            // Use correct field name
+          endedAt: now,              // Use correct field name
+          totalDurationSeconds: Math.floor((duration || 0) / 1000),
+          metadata: {
+            createdForRecording: true,
+            deviceInfo
+          }
+        });
+        await tempAudioSession.save();
+        finalAudioSessionId = tempAudioSession._id;
+        console.log('📝 Created temporary AudioSession:', finalAudioSessionId);
+      }
 
       // Create database record
       const recordingId = `rec_${sessionId}_${Date.now()}`;
       const audioRecording = new AudioRecording({
         recordingId,
         sessionId,
+        audioSessionId: finalAudioSessionId,
         mosqueId,
+        mosqueName,
         fileName,
         filePath,
-        fileSizeBytes: audioBuffer.length,
+        fileSizeBytes: bufferToWrite.length,
         format: format || 'm4a',
         durationSeconds: Math.floor((duration || 0) / 1000),
         provider: provider || 'unknown',

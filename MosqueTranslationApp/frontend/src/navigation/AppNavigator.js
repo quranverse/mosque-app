@@ -20,7 +20,10 @@ import HorizontalTranslationScreen from '../screens/HorizontalTranslationScreen/
 import MosqueManagementScreen from '../screens/MosqueManagementScreen';
 import BroadcastingScreen from '../screens/BroadcastingScreen';
 import AnnouncementsScreen from '../screens/AnnouncementsScreen';
+import MosqueProfileScreen from '../screens/MosqueProfileScreen/MosqueProfileScreen';
+import PasswordChangeScreen from '../screens/PasswordChangeScreen';
 import ConnectionTestScreen from '../screens/ConnectionTestScreen';
+import ArchiveScreen from '../screens/ArchiveScreen';
 
 // Import services
 import AuthService from '../services/AuthService/AuthService';
@@ -193,6 +196,27 @@ const MainStackNavigator = () => {
           presentation: 'modal',
           headerShown: true,
           title: 'Connection Test',
+        }}
+      />
+      <Stack.Screen
+        name="MosqueProfile"
+        component={MosqueProfileScreen}
+        options={{
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="PasswordChange"
+        component={PasswordChangeScreen}
+        options={{
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="Archive"
+        component={ArchiveScreen}
+        options={{
+          presentation: 'modal',
         }}
       />
     </Stack.Navigator>

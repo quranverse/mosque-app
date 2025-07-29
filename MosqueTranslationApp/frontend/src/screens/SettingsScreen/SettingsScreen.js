@@ -140,7 +140,17 @@ const SettingsScreen = ({ navigation }) => {
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* User Info Section */}
         {currentUser && (
-          <View style={styles.userSection}>
+          <TouchableOpacity
+            style={styles.userSection}
+            onPress={() => {
+              if (AuthService.isMosqueAdmin()) {
+                navigation.navigate('MosqueProfile');
+              } else {
+                Alert.alert('Profile', 'Profile management is available for mosque accounts only.');
+              }
+            }}
+            disabled={AuthService.isAnonymous()}
+          >
             <View style={styles.userInfo}>
               <Icon
                 name={AuthService.isMosqueAdmin() ? 'account-balance' :
@@ -164,33 +174,42 @@ const SettingsScreen = ({ navigation }) => {
                   }
                 </Text>
               </View>
+              {AuthService.isMosqueAdmin() && (
+                <Icon
+                  name="chevron-right"
+                  size={24}
+                  color={Colors.text.secondary}
+                />
+              )}
             </View>
+          </TouchableOpacity>
+        )}
 
-            {/* Show account creation option for anonymous users */}
-            {AuthService.isAnonymous() && (
-              <TouchableOpacity
-                style={styles.createAccountButton}
-                onPress={() => {
-                  Alert.alert(
-                    'Create Account',
-                    'Creating an account will clear your current session. Your followed mosques will be lost unless you follow them again after creating an account.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Continue',
-                        onPress: async () => {
-                          await AuthService.logout();
-                          // Navigation will be handled automatically by the auth listener
-                        },
+        {/* Show account creation option for anonymous users */}
+        {AuthService.isAnonymous() && (
+          <View style={styles.userSection}>
+            <TouchableOpacity
+              style={styles.createAccountButton}
+              onPress={() => {
+                Alert.alert(
+                  'Create Account',
+                  'Creating an account will clear your current session. Your followed mosques will be lost unless you follow them again after creating an account.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Continue',
+                      onPress: async () => {
+                        await AuthService.logout();
+                        // Navigation will be handled automatically by the auth listener
                       },
-                    ]
-                  );
-                }}
-              >
-                <Icon name="person-add" size={20} color={Colors.primary.main} />
-                <Text style={styles.createAccountText}>Create Account</Text>
-              </TouchableOpacity>
-            )}
+                    },
+                  ]
+                );
+              }}
+            >
+              <Icon name="person-add" size={20} color={Colors.primary.main} />
+              <Text style={styles.createAccountText}>Create Account</Text>
+            </TouchableOpacity>
           </View>
         )}
 

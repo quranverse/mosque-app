@@ -50,7 +50,7 @@ const voiceTranscriptionSchema = new mongoose.Schema({
   provider: {
     type: String,
     required: true,
-    enum: ['google', 'azure', 'whisper', 'assemblyai', 'aws'],
+    enum: ['munsit', 'google', 'azure', 'whisper', 'assemblyai', 'aws'],
     index: true
   },
   

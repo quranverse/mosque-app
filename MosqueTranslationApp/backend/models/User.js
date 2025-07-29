@@ -51,6 +51,9 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: function() { return this.userType === 'mosque'; }
   },
+  city: String,
+  zipCode: String,
+  country: String,
   phone: String,
   website: String,
   
@@ -89,12 +92,28 @@ const userSchema = new mongoose.Schema({
     type: Number,
     min: 1
   },
+  capacityWomen: {
+    type: Number,
+    min: 0
+  },
+  capacityMen: {
+    type: Number,
+    min: 0
+  },
+  constructionYear: {
+    type: Number,
+    min: 1000,
+    max: new Date().getFullYear()
+  },
+  briefHistory: String,
+  otherInfo: String,
   facilities: [String],
   
   // Photos (only for mosque accounts)
   photos: {
     exterior: String, // Required for mosques
     interior: String, // Required for mosques
+    logo: String, // Mosque logo
     additional: [String] // Up to 5 additional photos
   },
   

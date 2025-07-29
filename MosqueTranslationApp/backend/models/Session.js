@@ -42,9 +42,38 @@ const sessionSchema = new mongoose.Schema({
   // Session Status
   status: {
     type: String,
-    enum: ['active', 'paused', 'ended'],
+    enum: ['active', 'live', 'paused', 'ended'],
     default: 'active',
     index: true
+  },
+
+  // Live Broadcasting Status
+  isLive: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+
+  // Broadcasting Details
+  broadcastDetails: {
+    isVoiceRecognitionActive: {
+      type: Boolean,
+      default: false
+    },
+    isRecordingActive: {
+      type: Boolean,
+      default: false
+    },
+    currentProvider: {
+      type: String,
+      enum: ['munsit', 'google', 'azure', 'whisper', 'assemblyai', 'aws'],
+      default: 'munsit'
+    },
+    lastTranscriptionAt: Date,
+    totalTranscriptions: {
+      type: Number,
+      default: 0
+    }
   },
   
   // Timing

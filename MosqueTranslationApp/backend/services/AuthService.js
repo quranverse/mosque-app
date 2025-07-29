@@ -12,7 +12,10 @@ class AuthService {
         email,
         password,
         mosqueName,
-        mosqueAddress,
+        address,
+        city,
+        zipCode,
+        country,
         phone,
         website,
         latitude,
@@ -20,7 +23,13 @@ class AuthService {
         servicesOffered,
         languagesSupported,
         capacity,
-        facilities
+        facilities,
+        constructionYear,
+        capacityWomen,
+        capacityMen,
+        briefHistory,
+        otherInfo,
+        photos
       } = userData;
 
       // Check if user already exists
@@ -29,13 +38,41 @@ class AuthService {
         throw new Error('Email already registered');
       }
 
+      // Convert facilities object to array if needed
+      let facilitiesArray = facilities;
+      if (facilities && typeof facilities === 'object' && !Array.isArray(facilities)) {
+        facilitiesArray = Object.keys(facilities)
+          .filter(key => facilities[key])
+          .map(key => {
+            const facilityMap = {
+              spaceForWomen: 'Space for women',
+              ablutionsRoom: 'Ablutions room',
+              adultCourses: 'Adult courses',
+              childrenCourses: 'Children courses',
+              disabledAccessibility: 'Disabled accessibility',
+              library: 'Library',
+              quranForBlind: 'Quran for blind people',
+              salatAlJanaza: 'Salât al-Janaza',
+              salatElEid: 'Salat El Eid',
+              ramadanIftar: 'Ramadan iftar',
+              parking: 'Parking',
+              bikeParking: 'Bike parking',
+              electricCarCharging: 'Electric car charging'
+            };
+            return facilityMap[key] || key;
+          });
+      }
+
       // Create new mosque user
       const user = new User({
         email: email.toLowerCase(),
         password,
         userType: 'mosque',
         mosqueName,
-        mosqueAddress,
+        mosqueAddress: address,
+        city,
+        zipCode,
+        country,
         phone,
         website,
         location: {
@@ -45,7 +82,13 @@ class AuthService {
         servicesOffered: servicesOffered || [],
         languagesSupported: languagesSupported || ['Arabic', 'English'],
         capacity,
-        facilities: facilities || []
+        capacityWomen: capacityWomen ? parseInt(capacityWomen) : undefined,
+        capacityMen: capacityMen ? parseInt(capacityMen) : undefined,
+        constructionYear: constructionYear ? parseInt(constructionYear) : undefined,
+        briefHistory,
+        otherInfo,
+        facilities: facilitiesArray || [],
+        photos: photos || {}
       });
 
       await user.save();

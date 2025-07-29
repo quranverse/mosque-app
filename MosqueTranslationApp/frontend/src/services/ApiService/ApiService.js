@@ -1,6 +1,6 @@
 // API Service for Mosque Translation App
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_BASE_URL, API_ENDPOINTS, REQUEST_TIMEOUT, DEFAULT_HEADERS, getAuthHeaders } from '../../config/api';
+import { getApiBaseUrl, refreshApiUrl, API_ENDPOINTS, REQUEST_TIMEOUT, DEFAULT_HEADERS, getAuthHeaders } from '../../config/api';
 import ErrorHandler from '../../utils/ErrorHandler';
 
 class ApiService {
@@ -10,68 +10,124 @@ class ApiService {
   };
 
   /**
-   * Make a generic HTTP request
+   * Make a generic HTTP request with dynamic URL detection
    */
   static async makeRequest(endpoint, options = {}) {
-    try {
-      // Safely destructure options with defaults
-      const method = options.method || 'GET';
-      const body = options.body || null;
-      const headers = options.headers || {};
-      const requiresAuth = options.requiresAuth || false;
-      const timeout = options.timeout || REQUEST_TIMEOUT;
+    const maxRetries = options.maxRetries || 2;
+    let lastError = null;
 
-      // Build full URL
-      const url = `${API_BASE_URL}${endpoint}`;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        // Safely destructure options with defaults
+        const method = options.method || 'GET';
+        const body = options.body || null;
+        const headers = options.headers || {};
+        const requiresAuth = options.requiresAuth || false;
+        const timeout = options.timeout || REQUEST_TIMEOUT;
 
-      // Prepare headers
-      let requestHeaders = { ...DEFAULT_HEADERS, ...headers };
+        // Get dynamic API base URL
+        const apiBaseUrl = await getApiBaseUrl();
+        const url = `${apiBaseUrl}${endpoint}`;
 
-      // Add auth headers if required
-      if (requiresAuth) {
-        const token = await this.getAuthToken();
-        if (token) {
-          requestHeaders = { ...requestHeaders, ...getAuthHeaders(token) };
+        // Prepare headers
+        let requestHeaders = { ...DEFAULT_HEADERS, ...headers };
+
+        // Add auth headers if required
+        if (requiresAuth) {
+          const token = await this.getAuthToken();
+          if (token) {
+            requestHeaders = { ...requestHeaders, ...getAuthHeaders(token) };
+          }
+        }
+
+        // Prepare request options
+        const requestOptions = {
+          method,
+          headers: requestHeaders,
+        };
+
+        // Add body for non-GET requests
+        if (body && method !== 'GET') {
+          requestOptions.body = JSON.stringify(body);
+        }
+
+        console.log(`Making ${method} request to: ${url} (attempt ${attempt + 1})`);
+
+        // Make the request with timeout using AbortController
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        try {
+          const response = await fetch(url, {
+            ...requestOptions,
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          // Handle response
+          return await this.handleResponse(response);
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          throw fetchError;
+        }
+
+      } catch (error) {
+        lastError = error;
+
+        // If this is a network/timeout error and we have retries left, try refreshing the connection
+        if (attempt < maxRetries && this.isNetworkError(error)) {
+          console.log(`🔄 Network error on attempt ${attempt + 1}, refreshing connection...`);
+          try {
+            await refreshApiUrl();
+            // Wait a bit before retrying
+            await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+            continue;
+          } catch (refreshError) {
+            console.error('Failed to refresh API URL:', refreshError);
+          }
+        }
+
+        // If we've exhausted retries or it's not a network error, throw
+        if (attempt === maxRetries) {
+          break;
         }
       }
-
-      // Prepare request options
-      const requestOptions = {
-        method,
-        headers: requestHeaders,
-        timeout,
-      };
-
-      // Add body for non-GET requests
-      if (body && method !== 'GET') {
-        requestOptions.body = JSON.stringify(body);
-      }
-
-      console.log(`Making ${method} request to: ${url}`);
-      
-      // Make the request with timeout
-      const response = await Promise.race([
-        fetch(url, requestOptions),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), timeout)
-        ),
-      ]);
-
-      // Handle response
-      return await this.handleResponse(response);
-    } catch (error) {
-      // Safely get method and url for logging
-      const safeMethod = options?.method || 'GET';
-      const safeUrl = `${API_BASE_URL}${endpoint}`;
-      const safeBody = options?.body || null;
-      const safeHeaders = options?.headers || {};
-
-      ErrorHandler.logError(error, `API ${safeMethod} ${safeUrl}`, {
-        body: safeBody,
-        headers: safeHeaders
-      });
-      throw this.handleError(error);
     }
+
+    // Handle final error
+    const safeMethod = options?.method || 'GET';
+    const safeBody = options?.body || null;
+    const safeHeaders = options?.headers || {};
+
+    ErrorHandler.logError(lastError, `API ${safeMethod} ${endpoint}`, {
+      body: safeBody,
+      headers: safeHeaders,
+      attempts: maxRetries + 1
+    });
+    throw this.handleError(lastError);
+  }
+
+  /**
+   * Check if an error is network-related
+   */
+  static isNetworkError(error) {
+    const networkErrorMessages = [
+      'Request timeout',
+      'Network request failed',
+      'fetch is not defined',
+      'AbortError',
+      'TypeError: Failed to fetch',
+      'Connection refused',
+      'ECONNREFUSED',
+      'ETIMEDOUT',
+      'ENOTFOUND'
+    ];
+
+    const errorMessage = error?.message || '';
+    return networkErrorMessages.some(msg =>
+      errorMessage.toLowerCase().includes(msg.toLowerCase())
+    );
   }
 
   /**

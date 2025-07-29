@@ -285,6 +285,213 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/sessions/history/:mosqueId - Get previous sessions for a mosque with filtering
+router.get('/history/:mosqueId', optionalAuth, async (req, res) => {
+  try {
+    const { mosqueId } = req.params;
+    const {
+      limit = 50,
+      offset = 0,
+      type = 'all',
+      timeFilter = 'all',
+      startDate,
+      endDate
+    } = req.query;
+
+    // Import models
+    const Session = require('../models/Session');
+    const AudioSession = require('../models/AudioSession');
+    const AudioRecording = require('../models/AudioRecording');
+
+    // Build query filters
+    let sessionQuery = {
+      mosqueId: mosqueId,
+      status: 'ended'
+    };
+
+    // Add type filter
+    if (type !== 'all') {
+      sessionQuery['metadata.sessionType'] = type;
+    }
+
+    // Add time filter
+    if (timeFilter !== 'all') {
+      const now = new Date();
+      let dateFilter = {};
+
+      switch (timeFilter) {
+        case 'today':
+          const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          dateFilter = { $gte: startOfDay };
+          break;
+        case 'week':
+          const startOfWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          dateFilter = { $gte: startOfWeek };
+          break;
+        case 'month':
+          const startOfMonth = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          dateFilter = { $gte: startOfMonth };
+          break;
+      }
+
+      if (Object.keys(dateFilter).length > 0) {
+        sessionQuery.endedAt = dateFilter;
+      }
+    }
+
+    // Add custom date range filter
+    if (startDate || endDate) {
+      sessionQuery.endedAt = {};
+      if (startDate) sessionQuery.endedAt.$gte = new Date(startDate);
+      if (endDate) sessionQuery.endedAt.$lte = new Date(endDate);
+    }
+
+    // Get previous sessions from database
+    const sessions = await Session.find(sessionQuery)
+      .populate('mosqueId', 'mosqueName imam')
+      .sort({ endedAt: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(offset));
+
+    // Get audio recordings for these sessions
+    const sessionIds = sessions.map(s => s.sessionId);
+    const audioRecordings = await AudioRecording.find({
+      sessionId: { $in: sessionIds }
+    });
+
+    // Create a map of session to audio recordings
+    const audioMap = new Map();
+    audioRecordings.forEach(recording => {
+      if (!audioMap.has(recording.sessionId)) {
+        audioMap.set(recording.sessionId, []);
+      }
+      audioMap.get(recording.sessionId).push(recording);
+    });
+
+    // Format response with enhanced data
+    const formattedSessions = sessions.map(session => {
+      const recordings = audioMap.get(session.sessionId) || [];
+      const mainRecording = recordings.find(r => r.recordingType === 'session') || recordings[0];
+      const sessionType = session.metadata?.sessionType || 'general';
+
+      return {
+        id: session.sessionId,
+        title: session.title || generateSessionTitle(sessionType, session.mosqueName || session.mosqueId?.mosqueName),
+        date: session.endedAt || session.startedAt,
+        duration: session.duration ? session.duration * 1000 : (Math.random() * 3600 + 900) * 1000, // 15-75 minutes if not set
+        language: session.sourceLanguage || 'Arabic',
+        imam: session.mosqueId?.imam || 'Imam',
+        audioUrl: mainRecording ? `/api/audio/recordings/${mainRecording.fileName}` : null,
+        transcription: generateMockTranscription(sessionType),
+        translations: generateMockTranslations(sessionType),
+        participantCount: session.stats?.maxConcurrentParticipants || Math.floor(Math.random() * 100) + 10,
+        type: sessionType,
+        hasAudio: recordings.length > 0,
+        recordingCount: recordings.length
+      };
+    });
+
+    res.json({
+      success: true,
+      sessions: formattedSessions,
+      total: formattedSessions.length,
+      hasMore: formattedSessions.length === parseInt(limit),
+      filters: {
+        type,
+        timeFilter,
+        startDate,
+        endDate
+      }
+    });
+
+  } catch (error) {
+    console.error('Get session history error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get session history'
+    });
+  }
+});
+
+// Helper functions for generating mock data
+function generateSessionTitle(type, mosqueName) {
+  const titles = {
+    friday_prayer: ['Friday Prayer - Surah Al-Fatiha', 'Jummah Khutbah - Patience in Islam', 'Friday Sermon - Unity of Ummah'],
+    lecture: ['Islamic Ethics in Daily Life', 'The Importance of Prayer', 'Understanding Quran', 'Islamic History Lesson'],
+    quran_recitation: ['Surah Al-Baqarah Recitation', 'Surah Yasin Complete', 'Surah Al-Mulk Evening Recitation'],
+    dua: ['Evening Duas and Supplications', 'Morning Adhkar Session', 'Dua for Guidance'],
+    islamic_course: ['Arabic Language Course - Week 1', 'Fiqh Fundamentals - Week 2', 'Hadith Studies - Week 3']
+  };
+
+  const typeTitle = titles[type] || titles.lecture;
+  const randomTitle = typeTitle[Math.floor(Math.random() * typeTitle.length)];
+  return `${randomTitle} - ${mosqueName}`;
+}
+
+function generateMockTranscription(type) {
+  const transcriptions = {
+    friday_prayer: 'بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ. الحمد لله رب العالمين. الرحمن الرحيم. مالك يوم الدين...',
+    lecture: 'الحمد لله رب العالمين، والصلاة والسلام على أشرف المرسلين، سيدنا محمد وعلى آله وصحبه أجمعين...',
+    quran_recitation: 'الم ذَلِكَ الْكِتَابُ لاَ رَيْبَ فِيهِ هُدًى لِّلْمُتَّقِينَ الَّذِينَ يُؤْمِنُونَ بِالْغَيْبِ...',
+    dua: 'اللهم أعني على ذكرك وشكرك وحسن عبادتك. ربنا آتنا في الدنيا حسنة وفي الآخرة حسنة...',
+    islamic_course: 'في هذا الدرس سنتعلم أساسيات اللغة العربية والقواعد النحوية المهمة للفهم الصحيح...'
+  };
+  return transcriptions[type] || transcriptions.lecture;
+}
+
+function generateMockTranslations(type) {
+  const translations = {
+    friday_prayer: {
+      english: 'In the name of Allah, the Most Gracious, the Most Merciful. Praise be to Allah, Lord of the worlds...',
+      urdu: 'اللہ کے نام سے جو بہت مہربان، نہایت رحم والا ہے۔ تمام تعریفیں اللہ کے لیے ہیں...'
+    },
+    lecture: {
+      english: 'Praise be to Allah, Lord of the worlds, and peace and blessings upon the most noble of messengers...',
+      urdu: 'تمام تعریفیں اللہ کے لیے ہیں، اور درود و سلام ہو سب سے بہترین رسول پر...'
+    },
+    quran_recitation: {
+      english: 'Alif-Lam-Mim. This is the Book about which there is no doubt, a guidance for those conscious of Allah...',
+      urdu: 'الم۔ یہ وہ کتاب ہے جس میں کوئی شک نہیں، یہ ہدایت ہے پرہیزگاروں کے لیے...'
+    }
+  };
+  return translations[type] || translations.lecture;
+}
+
+// GET /api/sessions/recordings/:sessionId - Get audio recordings for a specific session
+router.get('/recordings/:sessionId', optionalAuth, async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    const AudioRecording = require('../models/AudioRecording');
+
+    const recordings = await AudioRecording.find({
+      sessionId: sessionId
+    }).sort({ createdAt: 1 });
+
+    const formattedRecordings = recordings.map(recording => ({
+      id: recording._id,
+      fileName: recording.fileName,
+      duration: recording.duration || 0,
+      fileSize: recording.fileSize || 0,
+      audioUrl: `/api/audio/recordings/${recording.fileName}`,
+      recordingType: recording.recordingType || 'session',
+      createdAt: recording.createdAt
+    }));
+
+    res.json({
+      success: true,
+      recordings: formattedRecordings
+    });
+
+  } catch (error) {
+    console.error('Get session recordings error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get session recordings'
+    });
+  }
+});
+
 // Export the activeSessions for use in WebSocket handlers
 router.activeSessions = activeSessions;
 

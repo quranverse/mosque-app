@@ -1,5 +1,5 @@
 // Mosque Service for Mosque Translation App
-import ApiService from '../ApiService';
+import ApiService from '../ApiService/ApiService';
 import { API_ENDPOINTS } from '../../config/api';
 import LocationService from '../LocationService/LocationService';
 import ErrorHandler from '../../utils/ErrorHandler';

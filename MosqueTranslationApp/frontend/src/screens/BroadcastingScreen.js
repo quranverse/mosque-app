@@ -12,11 +12,10 @@ import {
   Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import io from 'socket.io-client';
 // Temporarily disable audio module to fix native module error
 // import { AudioModule } from 'expo-audio';
-import { API_BASE_URL } from '../config/api';
 import AuthService from '../services/AuthService/AuthService';
+import SocketService from '../services/SocketService/SocketService';
 import VoiceRecognitionComponent from '../components/Audio/VoiceRecognitionComponent';
 
 const { width } = Dimensions.get('window');
@@ -91,52 +90,76 @@ const BroadcastingScreen = ({ navigation }) => {
 
   const initializeSocket = () => {
     try {
-      const socketConnection = io(API_BASE_URL.replace('/api', ''), {
-        transports: ['websocket'],
-      });
+      // Use the global SocketService instead of creating a new connection
+      const globalSocket = SocketService.getSocket();
 
-      socketConnection.on('connect', () => {
-        console.log('Broadcasting socket connected');
-      });
+      if (globalSocket && globalSocket.connected) {
+        console.log('✅ Using existing global socket connection for broadcasting');
+        setSocket(globalSocket);
 
-      socketConnection.on('listener_joined', (data) => {
-        setConnectedListeners(prev => prev + 1);
-      });
-
-      socketConnection.on('listener_left', (data) => {
-        setConnectedListeners(prev => Math.max(0, prev - 1));
-      });
-
-      // Voice recognition events
-      socketConnection.on('voice_transcription', (transcription) => {
-        console.log('📝 Received transcription:', transcription);
-
-        if (transcription.isFinal) {
-          // Final transcription - add to main display
-          setTranscriptionPreview(prev => {
-            const newText = prev ? `${prev}\n${transcription.text}` : transcription.text;
-            return newText;
-          });
-          setPartialTranscription(''); // Clear partial text
-        } else {
-          // Partial transcription - show in real-time
-          setPartialTranscription(transcription.text);
-        }
-      });
-
-      socketConnection.on('voice_recognition_error', (error) => {
-        console.error('Voice recognition error:', error);
-        Alert.alert('Voice Recognition Error', error.message);
-      });
-
-      socketConnection.on('disconnect', () => {
-        console.log('Broadcasting socket disconnected');
-      });
-
-      setSocket(socketConnection);
+        // Set up broadcast-specific event listeners
+        setupBroadcastEventListeners(globalSocket);
+      } else {
+        console.log('🔌 Global socket not available, initializing...');
+        SocketService.initialize().then(() => {
+          const newSocket = SocketService.getSocket();
+          if (newSocket) {
+            console.log('✅ Global socket initialized for broadcasting');
+            setSocket(newSocket);
+            setupBroadcastEventListeners(newSocket);
+          }
+        });
+      }
     } catch (error) {
-      console.error('Socket connection error:', error);
+      console.error('Error initializing socket:', error);
     }
+  };
+
+  const setupBroadcastEventListeners = (socketConnection) => {
+    if (!socketConnection) return;
+
+    console.log('🔧 Setting up broadcast event listeners...');
+
+    // Remove existing listeners to avoid duplicates
+    socketConnection.off('listener_joined');
+    socketConnection.off('listener_left');
+    socketConnection.off('voice_transcription');
+    socketConnection.off('voice_recognition_error');
+
+    // Set up broadcast-specific listeners
+    socketConnection.on('listener_joined', (data) => {
+      console.log('👥 Listener joined:', data);
+      setConnectedListeners(prev => prev + 1);
+    });
+
+    socketConnection.on('listener_left', (data) => {
+      console.log('👥 Listener left:', data);
+      setConnectedListeners(prev => Math.max(0, prev - 1));
+    });
+
+    // Voice recognition events
+    socketConnection.on('voice_transcription', (transcription) => {
+      console.log('📝 Received transcription:', transcription);
+
+      if (transcription.isFinal) {
+        // Final transcription - add to main display
+        setTranscriptionPreview(prev => {
+          const newText = prev ? `${prev}\n${transcription.text}` : transcription.text;
+          return newText;
+        });
+        setPartialTranscription(''); // Clear partial text
+      } else {
+        // Partial transcription - show in real-time
+        setPartialTranscription(transcription.text);
+      }
+    });
+
+    socketConnection.on('voice_recognition_error', (error) => {
+      console.error('Voice recognition error:', error);
+      Alert.alert('Voice Recognition Error', error.message);
+    });
+
+    console.log('✅ Broadcast event listeners set up successfully');
   };
 
   const loadBroadcastHistory = () => {
@@ -195,7 +218,7 @@ const BroadcastingScreen = ({ navigation }) => {
       // Start voice recognition
       if (voiceRecognitionRef.current) {
         try {
-          await voiceRecognitionRef.current.startRecognition({
+          await voiceRecognitionRef.current.startRecording({
             sessionId,
             provider: 'munsit', // Default provider - specialized for Arabic
             language: 'ar-SA',
@@ -210,9 +233,13 @@ const BroadcastingScreen = ({ navigation }) => {
         }
       }
 
+      // Refresh socket authentication before starting broadcast
+      console.log('🔄 Refreshing socket authentication before broadcast...');
+      await SocketService.refreshAuthentication();
+
       // Emit broadcast start to socket
-      if (socket) {
-        socket.emit('start_broadcast', {
+      if (socket && socket.connected) {
+        console.log('📡 Emitting start_broadcast event:', {
           sessionId,
           mosqueId: currentUser.id,
           mosqueName: currentUser.mosqueName,
@@ -220,6 +247,24 @@ const BroadcastingScreen = ({ navigation }) => {
           enableVoiceRecognition: true,
           enableRecording: true
         });
+
+        socket.emit('start_broadcast', {
+          sessionId,
+          mosqueId: currentUser.id,
+          mosqueName: currentUser.mosqueName,
+          language: 'Arabic',
+          enableVoiceRecognition: true,
+          enableRecording: true
+        }, (response) => {
+          console.log('📡 start_broadcast response:', response);
+          if (response && !response.success) {
+            console.error('❌ Broadcast start failed:', response.error);
+            Alert.alert('Broadcast Error', response.error || 'Failed to start broadcast. Please try again.');
+          }
+        });
+      } else {
+        console.error('❌ Socket not connected when trying to start broadcast');
+        Alert.alert('Connection Error', 'Socket not connected. Please check your connection and try again.');
       }
 
       Alert.alert('Broadcasting Started', 'Your live broadcast is now active. Voice recognition and recording are enabled.');
@@ -237,7 +282,7 @@ const BroadcastingScreen = ({ navigation }) => {
       // Stop voice recognition
       if (voiceRecognitionRef.current && isVoiceRecognitionActive) {
         try {
-          await voiceRecognitionRef.current.stopRecognition();
+          await voiceRecognitionRef.current.stopRecording();
         } catch (voiceError) {
           console.warn('Error stopping voice recognition:', voiceError);
         }
@@ -252,13 +297,24 @@ const BroadcastingScreen = ({ navigation }) => {
       }
 
       // Emit broadcast stop to socket
-      if (socket) {
-        socket.emit('stop_broadcast', {
+      if (socket && socket.connected) {
+        console.log('📡 Emitting stop_broadcast event:', {
           sessionId: currentSessionId,
           mosqueId: currentUser.id,
           duration: broadcastDuration,
           listeners: connectedListeners,
         });
+
+        socket.emit('stop_broadcast', {
+          sessionId: currentSessionId,
+          mosqueId: currentUser.id,
+          duration: broadcastDuration,
+          listeners: connectedListeners,
+        }, (response) => {
+          console.log('📡 stop_broadcast response:', response);
+        });
+      } else {
+        console.error('❌ Socket not connected when trying to stop broadcast');
       }
 
       // Reset state
@@ -459,6 +515,9 @@ const BroadcastingScreen = ({ navigation }) => {
       {/* Voice Recognition Component */}
       <VoiceRecognitionComponent
         ref={voiceRecognitionRef}
+        socketRef={{ current: socket }}
+        currentSessionId={currentSessionId}
+        currentProvider={voiceProvider}
         onAudioLevel={setAudioLevel}
         onTranscription={(transcription) => {
           console.log('🎙️ Voice recognition transcription:', transcription);
