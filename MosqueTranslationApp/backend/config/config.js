@@ -38,12 +38,93 @@ const config = {
     maxPhotosPerMosque: 7, // 2 required + 5 optional
   },
   
-  // Security Configuration
+   // Enhanced Security Configuration with Tunnel Support
   security: {
     bcryptRounds: 12,
     rateLimitWindowMs: 15 * 60 * 1000, // 15 minutes
     rateLimitMax: 100, // limit each IP to 100 requests per windowMs
-    corsOrigin: process.env.CORS_ORIGIN || '*',
+    
+    // Enhanced CORS configuration for tunnel support
+    corsOrigin: function(origin, callback) {
+      // Allow requests with no origin (like mobile apps)
+      if (!origin) return callback(null, true);
+      
+      // Development origins
+      const allowedOrigins = [
+        'http://localhost:3000',
+        'http://localhost:19006',  // Expo web
+        'http://localhost:8081',   // Alternative Expo port
+        'exp://localhost:19000',   // Expo development
+        'exp://localhost:19001',   // Alternative Expo port
+      ];
+      
+      // Production origins (add your production domains here)
+      const productionOrigins = [
+        'https://yourdomain.com',
+        'https://www.yourdomain.com'
+      ];
+      
+      // Tunnel patterns for development
+      const tunnelPatterns = [
+        /^https:\/\/.*\.exp\.direct$/,        // Expo tunnel
+        /^https:\/\/.*\.ngrok\.io$/,          // ngrok tunnel
+        /^https:\/\/.*\.tunnelmole\.com$/,    // tunnelmole
+        /^https:\/\/.*\.loca\.lt$/,           // localtunnel
+        /^https:\/\/.*\.ngrok-free\.app$/,    // ngrok free tier
+        /^exp:\/\/.*\.exp\.direct$/,          // Expo tunnel with exp protocol
+      ];
+      
+      // Check development origins
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      
+      // Check production origins
+      if (process.env.NODE_ENV === 'production' && productionOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      
+      // Check tunnel patterns (development only)
+      if (process.env.NODE_ENV !== 'production') {
+        for (const pattern of tunnelPatterns) {
+          if (pattern.test(origin)) {
+            console.log(`🚇 Tunnel connection accepted from: ${origin}`);
+            return callback(null, true);
+          }
+        }
+        
+        // For development, be more permissive with local IPs
+        if (origin.match(/^https?:\/\/(localhost|127\.0\.0\.1|10\.|192\.168\.|172\.)/)) {
+          console.log(`🏠 Local network connection accepted from: ${origin}`);
+          return callback(null, true);
+        }
+        
+        // Allow all origins in development mode
+        console.log(`🔓 Development mode - allowing origin: ${origin}`);
+        return callback(null, true);
+      }
+      
+      // Reject in production if not explicitly allowed
+      console.log(`❌ CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    },
+    
+    // CORS headers configuration
+    corsHeaders: {
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+      allowedHeaders: [
+        'Content-Type', 
+        'Authorization', 
+        'X-Requested-With', 
+        'Accept',
+        'Origin',
+        'Access-Control-Request-Method',
+        'Access-Control-Request-Headers'
+      ],
+      exposedHeaders: ['Content-Range', 'X-Content-Range'],
+      maxAge: 86400 // 24 hours
+    }
   },
   
   // Islamic Features Configuration
