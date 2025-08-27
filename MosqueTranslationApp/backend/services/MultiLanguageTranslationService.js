@@ -9,11 +9,29 @@ const VoiceTranscription = require('../models/VoiceTranscription');
 const TranslationResult = require('../models/TranslationResult');
 const TranslationCache = require('../models/TranslationCache');
 
+// Import dynamic translation system
+const TranslationManager = require('./translation/TranslationManager');
+const UserLanguagePreferencesService = require('./UserLanguagePreferencesService');
+
 class MultiLanguageTranslationService {
   constructor() {
     this.activeTranslators = new Map(); // socketId -> translator info
     this.languageQueues = new Map(); // sessionId -> language -> translations
     this.userPreferences = new Map(); // userId -> language preferences
+
+    // Initialize dynamic translation manager
+    this.translationManager = new TranslationManager(config);
+    this.initializeTranslationManager();
+  }
+
+  // Initialize the translation manager with all available providers
+  async initializeTranslationManager() {
+    try {
+      await this.translationManager.initialize();
+      console.log('✅ MultiLanguageTranslationService: Translation providers ready');
+    } catch (error) {
+      console.error('❌ Failed to initialize translation providers:', error);
+    }
   }
 
   // Register a translator for a specific language
@@ -56,13 +74,13 @@ class MultiLanguageTranslationService {
     }
   }
 
-  // Process incoming translation from mosque/imam
+  // Process incoming translation from mosque/imam with user preferences
   async processOriginalTranslation(sessionId, originalText, context = 'general', metadata = {}) {
     try {
       // Create base translation record
       const translationId = `trans_${sessionId}_${Date.now()}`;
       const session = await Session.findById(sessionId);
-      
+
       if (!session) {
         throw new Error('Session not found');
       }
@@ -71,8 +89,11 @@ class MultiLanguageTranslationService {
       const lastTranslation = await Translation.findOne({ sessionId })
         .sort({ sequenceNumber: -1 })
         .limit(1);
-      
+
       const sequenceNumber = lastTranslation ? lastTranslation.sequenceNumber + 1 : 1;
+
+      // Get all session participants and their language preferences
+      const participantLanguages = await this.getSessionParticipantLanguages(sessionId);
 
       // Create translation document
       const translation = new Translation({
@@ -88,11 +109,15 @@ class MultiLanguageTranslationService {
         metadata: {
           ...metadata,
           requiresTranslation: true,
-          targetLanguages: session.targetLanguages || []
+          targetLanguages: participantLanguages,
+          userPreferenceBased: true
         }
       });
 
       await translation.save();
+
+      // Automatically translate to all required languages based on user preferences
+      await this.translateToUserPreferredLanguages(translationId, originalText, participantLanguages, context);
 
       // Notify all active translators for this session
       this.notifyTranslators(sessionId, {
@@ -101,7 +126,7 @@ class MultiLanguageTranslationService {
         originalText,
         context,
         sequenceNumber,
-        targetLanguages: session.targetLanguages || []
+        targetLanguages: participantLanguages
       });
 
       return translation;
@@ -400,23 +425,68 @@ class MultiLanguageTranslationService {
     }
   }
 
-  // Translate with specific provider (placeholder - implement with actual APIs)
+  // Translate with specific provider using dynamic translation manager
   async translateWithProvider(sourceText, targetLanguage, provider, contextType) {
-    // This is a placeholder - you'll need to implement actual API calls
-    // to Google Translate, Azure Translator, OpenAI, etc.
+    try {
+      console.log(`🔄 Translating with ${provider}: ${sourceText.substring(0, 50)}...`);
 
-    console.log(`🔄 Translating with ${provider}: ${sourceText.substring(0, 50)}...`);
+      // Use the dynamic translation manager
+      const result = await this.translationManager.translate(
+        sourceText,
+        this.getLanguageCode(targetLanguage), // Convert language name to code
+        'ar', // Source language (Arabic)
+        {
+          provider: provider,
+          context: contextType || 'religious' // Default to religious context for mosque
+        }
+      );
 
-    // Simulate translation (replace with actual API calls)
-    const simulatedTranslation = {
-      text: `[${provider.toUpperCase()}] Translated: ${sourceText}`,
-      confidence: 0.85,
-      provider: provider,
-      processingTime: 150,
-      cost: 0.001
+      if (result.success) {
+        return {
+          text: result.text,
+          confidence: result.confidence,
+          provider: result.provider,
+          processingTime: result.processingTime,
+          cost: result.cost || 0.001
+        };
+      } else {
+        throw new Error(result.error?.message || 'Translation failed');
+      }
+
+    } catch (error) {
+      console.error(`❌ Translation failed with ${provider}:`, error);
+
+      // Return error in expected format
+      return {
+        text: `[Translation Error: ${error.message}]`,
+        confidence: 0,
+        provider: provider,
+        processingTime: 0,
+        cost: 0,
+        error: error.message
+      };
+    }
+  }
+
+  // Convert language name to ISO code
+  getLanguageCode(languageName) {
+    const languageMap = {
+      'English': 'en',
+      'French': 'fr',
+      'Spanish': 'es',
+      'German': 'de',
+      'Italian': 'it',
+      'Portuguese': 'pt',
+      'Russian': 'ru',
+      'Japanese': 'ja',
+      'Korean': 'ko',
+      'Chinese': 'zh',
+      'Hindi': 'hi',
+      'Urdu': 'ur',
+      'Turkish': 'tr'
     };
 
-    return simulatedTranslation;
+    return languageMap[languageName] || languageName.toLowerCase();
   }
 
   // Save translation result to database
@@ -461,6 +531,176 @@ class MultiLanguageTranslationService {
       if (now - translator.lastActivity > inactiveThreshold) {
         this.unregisterTranslator(socketId);
       }
+    }
+  }
+
+  // Get translation provider statistics
+  getTranslationProviderStats() {
+    if (!this.translationManager) {
+      return { error: 'Translation manager not initialized' };
+    }
+
+    return this.translationManager.getStats();
+  }
+
+  // Test all translation providers
+  async testTranslationProviders() {
+    if (!this.translationManager) {
+      return { error: 'Translation manager not initialized' };
+    }
+
+    return await this.translationManager.testAllProviders();
+  }
+
+  // Get available translation providers
+  getAvailableProviders() {
+    if (!this.translationManager) {
+      return [];
+    }
+
+    return this.translationManager.getAvailableProviders();
+  }
+
+  // Set default translation provider
+  setDefaultTranslationProvider(providerName) {
+    if (!this.translationManager) {
+      return false;
+    }
+
+    return this.translationManager.setDefaultProvider(providerName);
+  }
+
+  // Get language preferences for all session participants
+  async getSessionParticipantLanguages(sessionId) {
+    try {
+      // Get all users in the session (this would need to be implemented based on your session management)
+      // For now, return default German + English combination
+      const defaultLanguages = ['de', 'en']; // German as primary, English as common secondary
+
+      // TODO: Implement actual session participant lookup
+      // const participants = await this.getSessionParticipants(sessionId);
+      // const languages = new Set();
+      //
+      // for (const participant of participants) {
+      //   const userLangs = await UserLanguagePreferencesService.getTranslationLanguages(participant.userId);
+      //   userLangs.languages.forEach(lang => languages.add(lang));
+      // }
+
+      return defaultLanguages;
+    } catch (error) {
+      console.error('Error getting session participant languages:', error);
+      return ['de', 'en']; // Fallback to German + English
+    }
+  }
+
+  // Automatically translate to user preferred languages
+  async translateToUserPreferredLanguages(translationId, originalText, targetLanguages, context) {
+    try {
+      console.log(`🌍 Auto-translating to user preferred languages: ${targetLanguages.join(', ')}`);
+
+      const translationPromises = targetLanguages.map(async (language) => {
+        try {
+          const result = await this.translateWithCache(
+            originalText,
+            this.getLanguageName(language), // Convert code to name
+            context,
+            'google' // Use default provider
+          );
+
+          if (result && result.text) {
+            // Save translation result
+            await this.saveTranslationToDatabase(translationId, language, result);
+
+            // Notify session participants
+            this.notifySessionParticipants(translationId.split('_')[1], {
+              type: 'translation_update',
+              translationId,
+              language,
+              languageCode: language,
+              text: result.text,
+              confidence: result.confidence,
+              provider: result.provider
+            });
+
+            console.log(`✅ Auto-translated to ${language}: ${result.text.substring(0, 50)}...`);
+          }
+        } catch (error) {
+          console.error(`❌ Auto-translation failed for ${language}:`, error);
+        }
+      });
+
+      await Promise.all(translationPromises);
+    } catch (error) {
+      console.error('Error in auto-translation:', error);
+    }
+  }
+
+  // Convert language code to language name
+  getLanguageName(code) {
+    const codeToName = {
+      'de': 'German',
+      'en': 'English',
+      'fr': 'French',
+      'es': 'Spanish',
+      'it': 'Italian',
+      'pt': 'Portuguese',
+      'ru': 'Russian',
+      'tr': 'Turkish',
+      'ar': 'Arabic'
+    };
+
+    return codeToName[code] || code;
+  }
+
+  // Save translation to database
+  async saveTranslationToDatabase(translationId, languageCode, translationResult) {
+    try {
+      const translation = await Translation.findOne({ translationId });
+      if (!translation) {
+        console.error('Translation document not found:', translationId);
+        return;
+      }
+
+      // Add or update translation for this language
+      const existingIndex = translation.translations.findIndex(t => t.language === languageCode);
+
+      const translationData = {
+        language: languageCode,
+        text: translationResult.text,
+        confidence: translationResult.confidence,
+        provider: translationResult.provider,
+        timestamp: new Date(),
+        isAutoGenerated: true
+      };
+
+      if (existingIndex >= 0) {
+        translation.translations[existingIndex] = translationData;
+      } else {
+        translation.translations.push(translationData);
+      }
+
+      await translation.save();
+      console.log(`💾 Saved ${languageCode} translation to database`);
+    } catch (error) {
+      console.error('Error saving translation to database:', error);
+    }
+  }
+
+  // Notify session participants about translation updates
+  notifySessionParticipants(sessionId, data) {
+    try {
+      // This would integrate with your WebSocket system
+      // For now, just log the notification
+      console.log(`📢 Notifying session ${sessionId} participants:`, {
+        type: data.type,
+        language: data.language,
+        textPreview: data.text?.substring(0, 30) + '...'
+      });
+
+      // TODO: Implement actual WebSocket notification
+      // io.to(sessionId).emit('translation_update', data);
+    } catch (error) {
+      console.error('Error notifying session participants:', error);
     }
   }
 }

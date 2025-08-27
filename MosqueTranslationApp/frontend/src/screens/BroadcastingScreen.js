@@ -17,6 +17,8 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import AuthService from '../services/AuthService/AuthService';
 import SocketService from '../services/SocketService/SocketService';
 import VoiceRecognitionComponent from '../components/Audio/VoiceRecognitionComponent';
+import RealTimeAudioStreamer from '../components/Audio/RealTimeAudioStreamer';
+import IslamicDropdown from '../components/Common/IslamicDropdown';
 
 const { width } = Dimensions.get('window');
 
@@ -38,9 +40,25 @@ const BroadcastingScreen = ({ navigation }) => {
   const [audioPermission, setAudioPermission] = useState(false);
   const [voiceProvider, setVoiceProvider] = useState('munsit');
 
+  // Recording type selection state
+  const [selectedRecordingType, setSelectedRecordingType] = useState(null);
+  const [showRecordingTypeSelector, setShowRecordingTypeSelector] = useState(false);
+
+  // Recording type options for mosque activities
+  const recordingTypeOptions = [
+    { value: 'sermon', label: '🕌 Friday Sermon (Khutbah)', icon: 'account-voice' },
+    { value: 'prayer', label: '🤲 Prayer Session (Salah)', icon: 'hands-pray' },
+    { value: 'quran', label: '📖 Quran Recitation (Tilawah)', icon: 'book-open-variant' },
+    { value: 'lecture', label: '🎓 Islamic Lecture (Dars)', icon: 'school' },
+    { value: 'talk', label: '💬 Islamic Talk (Bayan)', icon: 'microphone' },
+    { value: 'dua', label: '🤲 Dua Session', icon: 'hands-pray' },
+    { value: 'general', label: '📢 General Broadcast', icon: 'broadcast' }
+  ];
+
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const durationInterval = useRef(null);
   const voiceRecognitionRef = useRef(null);
+  const realTimeAudioStreamerRef = useRef(null);
 
   useEffect(() => {
     initializeScreen();
@@ -139,18 +157,24 @@ const BroadcastingScreen = ({ navigation }) => {
 
     // Voice recognition events
     socketConnection.on('voice_transcription', (transcription) => {
-      console.log('📝 Received transcription:', transcription);
+      console.log('📝 Received Arabic transcription:', transcription);
 
+      // This is the Arabic transcription coming back to the mosque phone
       if (transcription.isFinal) {
-        // Final transcription - add to main display
+        // Final Arabic transcription - add to main display
         setTranscriptionPreview(prev => {
           const newText = prev ? `${prev}\n${transcription.text}` : transcription.text;
+          console.log('📝 Updated transcription preview:', newText);
           return newText;
         });
         setPartialTranscription(''); // Clear partial text
+
+        // Show success feedback to imam
+        console.log('✅ Arabic transcription received and displayed');
       } else {
-        // Partial transcription - show in real-time
+        // Partial Arabic transcription - show in real-time
         setPartialTranscription(transcription.text);
+        console.log('📝 Partial transcription:', transcription.text);
       }
     });
 
@@ -198,6 +222,19 @@ const BroadcastingScreen = ({ navigation }) => {
         return;
       }
 
+      // Check if recording type is selected
+      if (!selectedRecordingType) {
+        Alert.alert(
+          'Select Recording Type',
+          'Please select the type of recording before starting the broadcast.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Select Type', onPress: () => setShowRecordingTypeSelector(true) }
+          ]
+        );
+        return;
+      }
+
       // Generate session ID
       const sessionId = `session_${currentUser.id}_${Date.now()}`;
       setCurrentSessionId(sessionId);
@@ -215,21 +252,48 @@ const BroadcastingScreen = ({ navigation }) => {
         setBroadcastDuration(prev => prev + 1);
       }, 1000);
 
-      // Start voice recognition
+      // Start real-time audio streaming
+      if (realTimeAudioStreamerRef.current) {
+        try {
+          console.log('🎙️ Starting real-time audio streaming...');
+          await realTimeAudioStreamerRef.current.startStreaming();
+          setIsVoiceRecognitionActive(true);
+          console.log('✅ Real-time audio streaming started successfully');
+        } catch (streamingError) {
+          console.error('❌ Real-time audio streaming failed to start:', streamingError);
+          Alert.alert(
+            'Audio Streaming Error',
+            'Failed to start real-time audio streaming. Please check microphone permissions.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Retry', onPress: () => startBroadcast() }
+            ]
+          );
+          return; // Don't continue if streaming fails
+        }
+      }
+
+      // Also start legacy voice recognition as backup
       if (voiceRecognitionRef.current) {
         try {
+          // Generate proper filename based on recording type
+          const recordingFileName = generateRecordingFileName(selectedRecordingType.value, sessionId);
+          const selectedTypeLabel = selectedRecordingType.label.replace(/🕌|🤲|📖|🎓|💬|📢/g, '').trim();
+
           await voiceRecognitionRef.current.startRecording({
             sessionId,
             provider: 'munsit', // Default provider - specialized for Arabic
             language: 'ar-SA',
             enableRecording: true,
-            sessionType: 'general',
-            recordingTitle: `Broadcast ${new Date().toLocaleString()}`
+            sessionType: selectedRecordingType.value,
+            recordingTitle: `${selectedTypeLabel} - ${new Date().toLocaleString()}`,
+            recordingFileName: recordingFileName,
+            recordingType: selectedRecordingType.value
           });
-          setIsVoiceRecognitionActive(true);
+          console.log(`🎙️ Started backup recording: ${recordingFileName} (Type: ${selectedRecordingType.value})`);
         } catch (voiceError) {
-          console.warn('Voice recognition failed to start:', voiceError);
-          // Continue without voice recognition
+          console.warn('Legacy voice recognition failed to start:', voiceError);
+          // Continue without legacy voice recognition
         }
       }
 
@@ -257,7 +321,11 @@ const BroadcastingScreen = ({ navigation }) => {
           enableRecording: true
         }, (response) => {
           console.log('📡 start_broadcast response:', response);
-          if (response && !response.success) {
+          if (response && response.success) {
+            console.log('✅ Broadcast started, now starting voice recognition...');
+            // Start voice recognition for Arabic transcription
+            startVoiceRecognitionService(sessionId);
+          } else {
             console.error('❌ Broadcast start failed:', response.error);
             Alert.alert('Broadcast Error', response.error || 'Failed to start broadcast. Please try again.');
           }
@@ -279,12 +347,23 @@ const BroadcastingScreen = ({ navigation }) => {
       setIsRecording(false);
       setIsBroadcasting(false);
 
-      // Stop voice recognition
+      // Stop real-time audio streaming
+      if (realTimeAudioStreamerRef.current && isVoiceRecognitionActive) {
+        try {
+          realTimeAudioStreamerRef.current.stopStreaming();
+          console.log('🛑 Real-time audio streaming stopped');
+        } catch (streamingError) {
+          console.warn('Error stopping real-time audio streaming:', streamingError);
+        }
+      }
+
+      // Stop legacy voice recognition
       if (voiceRecognitionRef.current && isVoiceRecognitionActive) {
         try {
           await voiceRecognitionRef.current.stopRecording();
+          console.log('🛑 Legacy voice recognition stopped');
         } catch (voiceError) {
-          console.warn('Error stopping voice recognition:', voiceError);
+          console.warn('Error stopping legacy voice recognition:', voiceError);
         }
       }
       setIsVoiceRecognitionActive(false);
@@ -366,6 +445,45 @@ const BroadcastingScreen = ({ navigation }) => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Generate filename based on recording type and date
+  const generateRecordingFileName = (recordingType, sessionId) => {
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD format
+    const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, ''); // HHMMSS format
+    const uniqueId = Math.random().toString(36).substring(2, 8); // 6 character unique ID
+
+    const typePrefix = recordingType || 'general';
+    return `${typePrefix}_${dateStr}_${timeStr}_${uniqueId}.m4a`;
+  };
+
+  // Start voice recognition service for Arabic transcription
+  const startVoiceRecognitionService = (sessionId) => {
+    console.log('🎤 Starting voice recognition service for Arabic transcription...');
+
+    if (socket && socket.connected) {
+      socket.emit('start_voice_recognition', {
+        sessionId: sessionId,
+        provider: 'munsit',
+        language: 'ar-SA',
+        enableRecording: true,
+        sessionType: selectedRecordingType.value,
+        recordingTitle: `${selectedRecordingType.label.replace(/🕌|🤲|📖|🎓|💬|📢/g, '').trim()} - ${new Date().toLocaleString()}`
+      }, (response) => {
+        console.log('🎤 Voice recognition service response:', response);
+        if (response && response.success) {
+          console.log('✅ Voice recognition service started successfully');
+          console.log(`📡 Provider: ${response.provider}`);
+          setIsVoiceRecognitionActive(true);
+        } else {
+          console.error('❌ Failed to start voice recognition service:', response.error);
+          Alert.alert('Voice Recognition Error', response.error || 'Failed to start voice recognition');
+        }
+      });
+    } else {
+      console.error('❌ Socket not connected for voice recognition');
+    }
+  };
+
   const cleanup = () => {
     if (socket) {
       socket.disconnect();
@@ -406,6 +524,28 @@ const BroadcastingScreen = ({ navigation }) => {
         </Text>
       </View>
 
+      {/* Recording Type Selection */}
+      {!isBroadcasting && (
+        <View style={styles.recordingTypeContainer}>
+          <Text style={styles.recordingTypeLabel}>Select Recording Type:</Text>
+          <IslamicDropdown
+            value={selectedRecordingType}
+            onSelect={setSelectedRecordingType}
+            options={recordingTypeOptions}
+            placeholder="Choose activity type..."
+            style={styles.recordingTypeDropdown}
+            required={true}
+          />
+          {selectedRecordingType && (
+            <View style={styles.selectedTypeInfo}>
+              <Text style={styles.selectedTypeText}>
+                📹 Ready to record: {selectedRecordingType.label}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Broadcasting Controls */}
       <View style={styles.controlsContainer}>
         <View style={styles.statusContainer}>
@@ -413,6 +553,11 @@ const BroadcastingScreen = ({ navigation }) => {
           <Text style={styles.statusText}>
             {isBroadcasting ? 'LIVE' : 'OFFLINE'}
           </Text>
+          {isBroadcasting && selectedRecordingType && (
+            <Text style={styles.recordingTypeIndicator}>
+              {selectedRecordingType.label}
+            </Text>
+          )}
         </View>
 
         {isBroadcasting && (
@@ -460,7 +605,17 @@ const BroadcastingScreen = ({ navigation }) => {
       {isBroadcasting && (
         <View style={styles.transcriptionContainer}>
           <View style={styles.transcriptionHeader}>
-            <Text style={styles.transcriptionTitle}>Live Transcription ({voiceProvider.toUpperCase()})</Text>
+            <View style={styles.transcriptionTitleContainer}>
+              <Text style={styles.transcriptionTitle}>Arabic Voice Recognition</Text>
+              <View style={styles.providerBadge}>
+                <Text style={styles.providerText}>{voiceProvider.toUpperCase()}</Text>
+              </View>
+              {partialTranscription && (
+                <View style={styles.listeningIndicator}>
+                  <Text style={styles.listeningText}>🎤 Listening...</Text>
+                </View>
+              )}
+            </View>
 
             {/* Voice Level Indicator */}
             <View style={styles.voiceIndicatorContainer}>
@@ -486,33 +641,107 @@ const BroadcastingScreen = ({ navigation }) => {
             </View>
           </View>
 
-          <ScrollView style={styles.transcriptionScroll} showsVerticalScrollIndicator={false}>
-            {/* Final Transcriptions */}
+          {/* Recording Type Indicator */}
+          {selectedRecordingType && (
+            <View style={styles.recordingTypeIndicatorContainer}>
+              <Text style={styles.recordingTypeIndicatorText}>
+                📹 {selectedRecordingType.label}
+              </Text>
+            </View>
+          )}
+
+          <ScrollView
+            style={styles.transcriptionScroll}
+            showsVerticalScrollIndicator={false}
+            ref={(ref) => { this.scrollViewRef = ref; }}
+            onContentSizeChange={() => this.scrollViewRef?.scrollToEnd({ animated: true })}
+          >
+            {/* Final Transcriptions with better Arabic support */}
             {transcriptionPreview ? (
-              <Text style={styles.transcriptionText}>
-                {transcriptionPreview}
-              </Text>
+              <View style={styles.finalTranscriptionContainer}>
+                <Text style={[styles.transcriptionText, styles.finalTranscriptionText]}>
+                  {transcriptionPreview}
+                </Text>
+              </View>
             ) : null}
 
-            {/* Partial/Real-time Transcription */}
+            {/* Partial/Real-time Transcription with typing indicator */}
             {partialTranscription ? (
-              <Text style={[styles.transcriptionText, styles.partialTranscription]}>
-                {partialTranscription}
-              </Text>
+              <View style={styles.partialTranscriptionContainer}>
+                <View style={styles.typingIndicator}>
+                  <Text style={styles.typingDots}>●●●</Text>
+                </View>
+                <Text style={[styles.transcriptionText, styles.partialTranscriptionText]}>
+                  {partialTranscription}
+                </Text>
+              </View>
             ) : null}
 
-            {/* Waiting message */}
+            {/* Waiting message with animation */}
             {!transcriptionPreview && !partialTranscription && (
-              <Text style={styles.waitingText}>
-                🎙️ Waiting for voice input...
-                {'\n'}Speak in Arabic to see real-time transcription
-              </Text>
+              <View style={styles.waitingContainer}>
+                <Animated.View style={[styles.micIcon, { opacity: pulseAnim }]}>
+                  <Text style={styles.micIconText}>🎙️</Text>
+                </Animated.View>
+                <Text style={styles.waitingText}>
+                  Waiting for voice input...
+                </Text>
+                <Text style={styles.waitingSubtext}>
+                  Speak in Arabic to see real-time transcription
+                </Text>
+              </View>
             )}
           </ScrollView>
+
+          {/* Transcription Stats */}
+          <View style={styles.transcriptionStats}>
+            <Text style={styles.statsText}>
+              Words: {(transcriptionPreview + ' ' + partialTranscription).trim().split(/\s+/).filter(w => w.length > 0).length}
+            </Text>
+            <Text style={styles.statsText}>•</Text>
+            <Text style={styles.statsText}>
+              Duration: {formatDuration(broadcastDuration)}
+            </Text>
+          </View>
         </View>
       )}
 
-      {/* Voice Recognition Component */}
+      {/* Real-Time Audio Streamer Component */}
+      <RealTimeAudioStreamer
+        ref={realTimeAudioStreamerRef}
+        socketRef={{ current: socket }}
+        currentSessionId={currentSessionId}
+        provider={voiceProvider}
+        language="ar-SA"
+        isEnabled={isBroadcasting}
+        onAudioLevel={setAudioLevel}
+        onTranscription={(transcription) => {
+          console.log('🎙️ Real-time transcription callback:', transcription);
+
+          // Handle real-time transcriptions
+          if (transcription.isFinal) {
+            // Final Arabic transcription - add to main display
+            setTranscriptionPreview(prev => {
+              const newText = prev ? `${prev}\n${transcription.text}` : transcription.text;
+              console.log('🎙️ Updated real-time transcription:', newText);
+              return newText;
+            });
+            setPartialTranscription(''); // Clear partial text
+          } else {
+            // Partial transcription - show in preview
+            setPartialTranscription(transcription.text);
+          }
+        }}
+        onError={(error) => {
+          console.error('🎙️ Real-time audio streaming error:', error);
+          Alert.alert('Real-Time Audio Error', error);
+        }}
+        onStreamingStatusChange={(isStreaming) => {
+          console.log('🎙️ Real-time streaming status changed:', isStreaming);
+        }}
+      />
+
+      {/* Legacy Voice Recognition Component (Backup) */}
       <VoiceRecognitionComponent
         ref={voiceRecognitionRef}
         socketRef={{ current: socket }}
@@ -520,18 +749,23 @@ const BroadcastingScreen = ({ navigation }) => {
         currentProvider={voiceProvider}
         onAudioLevel={setAudioLevel}
         onTranscription={(transcription) => {
-          console.log('🎙️ Voice recognition transcription:', transcription);
+          console.log('🎙️ Voice recognition transcription callback:', transcription);
 
+          // This callback handles transcriptions from the VoiceRecognitionComponent
           if (transcription.isFinal) {
-            // Final transcription - add to main display
+            // Final Arabic transcription - add to main display
             setTranscriptionPreview(prev => {
               const newText = prev ? `${prev}\n${transcription.text}` : transcription.text;
+              console.log('🎙️ Updated transcription from component:', newText);
               return newText;
             });
             setPartialTranscription(''); // Clear partial text
+
+            console.log('✅ Arabic transcription processed from component');
           } else {
-            // Partial transcription - show in real-time
+            // Partial Arabic transcription - show in real-time
             setPartialTranscription(transcription.text);
+            console.log('🎙️ Partial transcription from component:', transcription.text);
           }
         }}
         onError={(error) => {
@@ -700,10 +934,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     marginHorizontal: 20,
     marginBottom: 20,
-    borderRadius: 10,
+    borderRadius: 15,
     padding: 20,
-    elevation: 2,
-    maxHeight: 200,
+    elevation: 3,
+    maxHeight: 300,
+    borderLeftWidth: 4,
+    borderLeftColor: '#4CAF50',
   },
   transcriptionHeader: {
     flexDirection: 'row',
@@ -711,11 +947,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 15,
   },
+  transcriptionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
   transcriptionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
-    flex: 1,
+    marginRight: 10,
+  },
+  providerBadge: {
+    backgroundColor: '#E8F5E8',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+  },
+  providerText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#2E7D32',
+  },
+  listeningIndicator: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 8,
+  },
+  listeningText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   voiceIndicatorContainer: {
     flexDirection: 'row',
@@ -738,27 +1004,103 @@ const styles = StyleSheet.create({
     color: '#666',
     minWidth: 35,
   },
+  recordingTypeIndicatorContainer: {
+    backgroundColor: '#FFF3E0',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF9800',
+  },
+  recordingTypeIndicatorText: {
+    fontSize: 12,
+    color: '#E65100',
+    fontWeight: '500',
+  },
   transcriptionScroll: {
-    maxHeight: 120,
+    maxHeight: 150,
+    marginBottom: 10,
+  },
+  finalTranscriptionContainer: {
+    backgroundColor: '#F8F9FA',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#4CAF50',
+  },
+  finalTranscriptionText: {
+    fontSize: 15,
+    color: '#1B5E20',
+    fontWeight: '500',
+  },
+  partialTranscriptionContainer: {
+    backgroundColor: '#E3F2FD',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#2196F3',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  typingIndicator: {
+    marginRight: 8,
+    marginTop: 2,
+  },
+  typingDots: {
+    fontSize: 12,
+    color: '#2196F3',
+    fontWeight: 'bold',
+  },
+  partialTranscriptionText: {
+    fontSize: 14,
+    color: '#1565C0',
+    fontStyle: 'italic',
+    flex: 1,
   },
   transcriptionText: {
     fontSize: 14,
     color: '#333',
-    lineHeight: 20,
+    lineHeight: 22,
     textAlign: 'right', // RTL for Arabic
-    marginBottom: 5,
+    writingDirection: 'rtl', // Better Arabic support
   },
-  partialTranscription: {
-    color: '#666',
-    fontStyle: 'italic',
-    opacity: 0.8,
+  waitingContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  micIcon: {
+    marginBottom: 10,
+  },
+  micIconText: {
+    fontSize: 24,
   },
   waitingText: {
-    fontSize: 14,
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    fontWeight: '500',
+    marginBottom: 5,
+  },
+  waitingSubtext: {
+    fontSize: 12,
     color: '#999',
     textAlign: 'center',
     fontStyle: 'italic',
-    lineHeight: 20,
+  },
+  transcriptionStats: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  statsText: {
+    fontSize: 11,
+    color: '#666',
+    marginHorizontal: 8,
   },
   historySection: {
     backgroundColor: '#fff',
@@ -797,6 +1139,42 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#2E7D32',
     marginTop: 2,
+  },
+  // Recording type selection styles
+  recordingTypeContainer: {
+    backgroundColor: '#fff',
+    margin: 20,
+    marginBottom: 10,
+    borderRadius: 15,
+    padding: 20,
+    elevation: 3,
+  },
+  recordingTypeLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  recordingTypeDropdown: {
+    marginBottom: 10,
+  },
+  selectedTypeInfo: {
+    backgroundColor: '#E8F5E8',
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2E7D32',
+  },
+  selectedTypeText: {
+    fontSize: 14,
+    color: '#2E7D32',
+    fontWeight: '500',
+  },
+  recordingTypeIndicator: {
+    fontSize: 12,
+    color: '#FF4444',
+    marginTop: 2,
+    fontWeight: 'bold',
   },
 });
 

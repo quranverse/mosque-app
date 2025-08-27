@@ -28,6 +28,17 @@ const VoiceRecognitionComponent = forwardRef(({
   const [transcriptionText, setTranscriptionText] = useState('');
   const [audioLevel, setAudioLevel] = useState(0);
   const [recordingPath, setRecordingPath] = useState('');
+  const [isTranscriptionMode, setIsTranscriptionMode] = useState(false);
+
+  // Debug wrapper for setIsRecording to track when it changes
+  const setIsRecordingWithDebug = (value) => {
+    console.log(`🔄 setIsRecording called: ${isRecording} → ${value}`);
+    if (value === false && isRecording === true) {
+      console.log('⚠️ Recording is being stopped! Stack trace:');
+      console.trace();
+    }
+    setIsRecording(value);
+  };
 
   // Refs for audio recording
   const audioRecordingRef = useRef(null);
@@ -70,7 +81,13 @@ const VoiceRecognitionComponent = forwardRef(({
   const startAudioCapture = async (options = {}) => {
     try {
       console.log('🎙️ Starting REAL audio capture with options:', options);
-      setIsRecording(true);
+      setIsRecordingWithDebug(true);
+
+      // Store options for later use
+      recordingRef.current = {
+        ...recordingRef.current,
+        options: options
+      };
 
       // Start real audio recording
       await startRealAudioRecording(options);
@@ -91,11 +108,12 @@ const VoiceRecognitionComponent = forwardRef(({
     }
   };
 
-  // Stop audio capture
+  // Stop audio capture (when broadcast ends - stops everything)
   const stopAudioCapture = async () => {
     try {
-      console.log('🛑 Stopping audio recording...');
-      setIsRecording(false);
+      console.log('🛑 Stopping audio capture (broadcast ended)...');
+      setIsRecordingWithDebug(false);
+      setIsTranscriptionMode(false); // Stop transcription mode when broadcast ends
 
       // Stop real audio recording
       if (audioRecordingRef.current) {
@@ -120,10 +138,13 @@ const VoiceRecognitionComponent = forwardRef(({
             try {
               // Read the complete audio file using the URI
               const finalAudioData = await readCompleteAudioFile(uri);
-              
+
               if (finalAudioData) {
                 console.log('🔌 Socket available:', !!socketRef.current);
                 console.log('🔌 Socket connected:', socketRef.current?.connected);
+
+                // Get recording options from stored reference
+                const recordingOptions = recordingRef.current?.options || {};
 
                 socketRef.current.emit('audio_recording_complete', {
                   sessionId: currentSessionId,
@@ -134,10 +155,13 @@ const VoiceRecognitionComponent = forwardRef(({
                   format: 'm4a',
                   duration: Date.now() - (recordingRef.current?.startTime || Date.now()),
                   isRealAudio: true,
-                  fileName: `recording_${currentSessionId}_${Date.now()}.m4a`
+                  fileName: recordingOptions.recordingFileName || `recording_${currentSessionId}_${Date.now()}.m4a`,
+                  recordingType: recordingOptions.recordingType || recordingOptions.sessionType || 'general',
+                  sessionType: recordingOptions.sessionType || 'general',
+                  recordingTitle: recordingOptions.recordingTitle || 'Untitled Recording'
                 });
-                
-                console.log('📤 Sent complete audio file to backend for storage');
+
+                console.log('📤 Sent complete audio file to backend for storage with type:', recordingOptions.recordingType);
               } else {
                 console.log('⚠️ No audio data to send to backend');
               }
@@ -153,17 +177,35 @@ const VoiceRecognitionComponent = forwardRef(({
         }
       }
 
-      // Clean up intervals
+      // Start a new lightweight recording just for transcription
+      console.log('🎤 Recording stopped but starting transcription-only recording...');
+      setIsTranscriptionMode(true);
+      await startTranscriptionOnlyRecording();
+
+      // Clean up recording intervals but keep streaming for transcription
       if (recordingRef.current?.levelInterval) {
         clearInterval(recordingRef.current.levelInterval);
       }
-      if (recordingRef.current?.streamingInterval) {
-        clearInterval(recordingRef.current.streamingInterval);
+
+      // Clean up real-time chunking interval when recording stops
+      if (recordingRef.current?.chunkInterval) {
+        clearInterval(recordingRef.current.chunkInterval);
+        recordingRef.current.chunkInterval = null;
+      }
+
+      // Clean up real-time recorder
+      if (recordingRef.current?.realtimeRecorder) {
+        try {
+          await recordingRef.current.realtimeRecorder.stopRecorder();
+          recordingRef.current.realtimeRecorder = null;
+        } catch (cleanupError) {
+          console.warn('⚠️ Error cleaning up real-time recorder:', cleanupError);
+        }
       }
 
       // Reset audio level
       setAudioLevel(0);
-      
+
       // Reset wave animations
       waveAnimations.current.forEach(anim => {
         anim.setValue(0.1);
@@ -172,6 +214,32 @@ const VoiceRecognitionComponent = forwardRef(({
     } catch (error) {
       console.error('❌ Error stopping audio capture:', error);
       throw error;
+    }
+  };
+
+  // Start transcription-only recording (lightweight, no file saving)
+  const startTranscriptionOnlyRecording = async () => {
+    try {
+      console.log('🎤 Starting transcription-only recording...');
+
+      // Import Audio module
+      const Audio = require('expo-av').Audio;
+
+      // Create a new recording just for transcription
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        undefined, // No status update callback
+        100 // Update interval
+      );
+
+      // Store the transcription recording
+      audioRecordingRef.current = recording;
+
+      console.log('✅ Transcription-only recording started');
+
+    } catch (error) {
+      console.error('❌ Error starting transcription-only recording:', error);
+      setIsTranscriptionMode(false); // Disable transcription mode on error
     }
   };
 
@@ -266,6 +334,7 @@ const VoiceRecognitionComponent = forwardRef(({
       const recordingId = `recording_${startTime}_${Math.random().toString(36).substring(2, 11)}`;
 
       recordingRef.current = {
+        ...recordingRef.current, // Preserve existing options
         recording: recording,
         startTime: startTime,
         recordingId: recordingId
@@ -276,8 +345,13 @@ const VoiceRecognitionComponent = forwardRef(({
       // Start real audio level monitoring
       startRealAudioLevelMonitoring();
 
-      // Start real audio streaming to backend
-      startRealAudioStreaming();
+      // Real-time streaming is not properly implemented yet
+      console.error('❌ REAL-TIME TRANSLATION NOT AVAILABLE');
+      console.error('❌ The app cannot provide real-time translation as required for mosque use');
+      console.error('❌ This is a critical limitation - users will not get live translation');
+
+      // Don't start fake streaming that doesn't work
+      throw new Error('Real-time translation system not implemented - cannot proceed with mosque broadcasting');
 
       console.log('✅ Real audio capture started successfully');
       console.log('🎯 Real voice recognition will be handled by backend');
@@ -351,30 +425,11 @@ const VoiceRecognitionComponent = forwardRef(({
     }
   };
 
-  // Function to create audio chunks for streaming
-  const readAudioChunks = async (recordingStatus) => {
-    try {
-      // For real-time streaming, we'll send recording status and let backend handle file access
-      // Since expo-av doesn't provide direct file access during recording
+  // REMOVED: Fake chunking system that doesn't work
 
-      if (!recordingStatus || !recordingStatus.isRecording) {
-        console.log('⚠️ No active recording to read from');
-        return null;
-      }
+  // REMOVED: Fake audio chunk extraction
 
-      // Create audio chunk data based on recording duration
-      // This represents the audio data that would be streamed to backend
-      const chunkSize = Math.min(1024, recordingStatus.durationMillis || 100);
-      const audioChunk = new Array(chunkSize).fill(0).map(() => Math.floor(Math.random() * 256));
-
-      console.log(`📤 Created audio chunk: ${audioChunk.length} bytes (duration: ${recordingStatus.durationMillis}ms)`);
-      return audioChunk;
-
-    } catch (error) {
-      console.error('❌ Error creating audio chunk:', error);
-      return null;
-    }
-  };
+  // REMOVED: Duplicate fake function
 
   // Real audio level monitoring
   const startRealAudioLevelMonitoring = () => {
@@ -437,68 +492,19 @@ const VoiceRecognitionComponent = forwardRef(({
     }
   };
 
-  // Real audio streaming to backend
+  // REMOVED: All fake streaming code
   const startRealAudioStreaming = () => {
-    try {
-      console.log('🎵 Starting REAL audio streaming to backend...');
-
-      // Start real-time audio chunk streaming
-      const streamingInterval = setInterval(async () => {
-        if (isRecording && audioRecordingRef.current && socketRef.current) {
-          try {
-            // Get current recording status
-            const status = await audioRecordingRef.current.getStatusAsync();
-
-            if (status.isRecording) {
-              // Create audio chunk data for streaming
-              const audioData = await readAudioChunks(status);
-
-              if (audioData) {
-                // Send actual audio data to backend
-                socketRef.current.emit('audio_chunk', {
-                  sessionId: currentSessionId,
-                  audioData: audioData,
-                  timestamp: Date.now(),
-                  provider: currentProvider,
-                  format: 'm4a',
-                  mosque_id: currentSessionId, // This should be the actual mosque ID
-                  duration: status.durationMillis || 0,
-                  isRealAudio: true
-                });
-
-                console.log('📤 Sent real audio chunk to backend');
-              } else {
-                console.log('⚠️ No audio data to send');
-              }
-            }
-
-            // Also send status for monitoring
-            socketRef.current.emit('audio_status', {
-              sessionId: currentSessionId,
-              isRecording: status.isRecording,
-              duration: status.durationMillis || 0,
-              timestamp: Date.now()
-            });
-
-          } catch (error) {
-            console.error('❌ Error sending audio data:', error);
-          }
-        } else {
-          clearInterval(streamingInterval);
-        }
-      }, 1000); // Send every 1 second for real-time streaming
-
-      // Store interval for cleanup
-      if (recordingRef.current) {
-        recordingRef.current.streamingInterval = streamingInterval;
-      }
-
-      console.log('✅ Real audio streaming started');
-
-    } catch (error) {
-      console.error('❌ Audio streaming setup failed:', error);
-    }
+    throw new Error('Real-time streaming not implemented - this function should not be called');
   };
+
+  // Function to create audio chunks for streaming (BROKEN - CANNOT WORK)
+  const readAudioChunks = async (recordingStatus) => {
+    console.error('❌ REAL-TIME AUDIO CHUNKING NOT POSSIBLE');
+    console.error('❌ React Native cannot read from files while they are being written');
+    console.error('❌ All audio libraries are file-based - no real-time buffer access');
+    return null; // Cannot provide real audio chunks
+  };
+
 
   // Animate voice wave bars
   const animateVoiceWaves = (level) => {

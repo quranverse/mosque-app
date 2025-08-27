@@ -642,6 +642,29 @@ export const API_ENDPOINTS = {
     UPDATE: (id) => `/translations/${id}`,
     DELETE: (id) => `/translations/${id}`,
   },
+
+  // Translation Providers
+  TRANSLATION_PROVIDERS: {
+    LIST: '/translation/providers',
+    TEST: '/translation/test',
+    TRANSLATE: '/translation/translate',
+    SET_DEFAULT: '/translation/providers/default',
+  },
+
+  // User Language Preferences
+  USER_LANGUAGE_PREFERENCES: {
+    GET: '/user/language-preferences',
+    UPDATE: '/user/language-preferences',
+    ENABLE_DUAL: '/user/dual-subtitles/enable',
+    DISABLE_DUAL: '/user/dual-subtitles/disable',
+  },
+
+  // Languages
+  LANGUAGES: {
+    SUPPORTED: '/languages/supported',
+  },
+
+
   
   // User Profile
   USER: {

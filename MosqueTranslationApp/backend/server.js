@@ -18,6 +18,7 @@ const translationRoutes = require('./routes/translation');
 // Import services
 const MultiLanguageTranslationService = require('./services/MultiLanguageTranslationService');
 const VoiceRecognitionService = require('./services/VoiceRecognitionService');
+const UserLanguagePreferencesService = require('./services/UserLanguagePreferencesService');
 
 // Import middleware
 const { optionalAuth } = require('./middleware/auth');
@@ -71,6 +72,9 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Static file serving for audio recordings
 app.use('/api/audio/recordings', express.static(path.join(__dirname, 'audio-recordings')));
+
+// Static file serving for TTS audio output
+app.use('/api/audio/tts', express.static(path.join(__dirname, 'services/audio-output')));
 
 // API Routes
 const userRoutes = require('./routes/user');
@@ -593,13 +597,27 @@ io.on('connection', (socket) => {
   // Handle voice recognition start
   socket.on('start_voice_recognition', async (data, callback) => {
     try {
+      console.log('🎤 Received start_voice_recognition request:', data);
+
       const client = connectedClients.get(socket.id);
       if (!client || !client.isAuthenticated || client.userType !== 'mosque') {
+        console.log('❌ Voice recognition auth failed:', {
+          hasClient: !!client,
+          isAuth: client?.isAuthenticated,
+          userType: client?.userType
+        });
         callback && callback({ success: false, error: 'Mosque authentication required' });
         return;
       }
 
       const { sessionId, provider, language, enableRecording, sessionType, recordingTitle } = data;
+      console.log('🎤 Starting voice recognition with params:', {
+        sessionId,
+        provider,
+        language,
+        sessionType,
+        enableRecording
+      });
 
       // Start voice recognition service with recording
       const result = await VoiceRecognitionService.startVoiceRecognition(sessionId, client.userId, {
@@ -610,14 +628,48 @@ io.on('connection', (socket) => {
         recordingTitle: recordingTitle || `Session ${sessionId}`,
         recordingDescription: `Voice recording for session ${sessionId}`,
         onTranscription: async (transcription) => {
+          console.log('🎤 Voice recognition transcription received:', {
+            text: transcription.text?.substring(0, 50) + '...',
+            isFinal: transcription.isFinal,
+            provider: transcription.provider
+          });
+
           // Save transcription to database
           const savedTranscription = await VoiceRecognitionService.saveTranscription(sessionId, transcription);
 
-          // Send transcription to client
+          console.log(`📝 Sending Arabic transcription to mosque: "${transcription.text}"`);
+
+          // Send transcription back to mosque phone (Arabic text)
           socket.emit('voice_transcription', {
             ...transcription,
-            transcriptionId: savedTranscription?.transcriptionId
+            transcriptionId: savedTranscription?.transcriptionId,
+            language: 'ar',
+            isOriginal: true, // This is the original Arabic text
+            timestamp: new Date()
           });
+
+          console.log('📤 Arabic transcription sent to mosque phone');
+
+          // If this is a final transcription, also process for translation
+          if (transcription.isFinal && transcription.text && transcription.text.trim()) {
+            console.log(`🌍 Processing Arabic text for translation: "${transcription.text}"`);
+
+            // Process for translation to users
+            try {
+              await MultiLanguageTranslationService.processOriginalTranslation(
+                sessionId,
+                transcription.text.trim(),
+                'speech',
+                {
+                  transcriptionId: savedTranscription?.transcriptionId,
+                  provider: transcription.provider,
+                  confidence: transcription.confidence
+                }
+              );
+            } catch (translationError) {
+              console.error('❌ Error processing translation:', translationError);
+            }
+          }
 
           // If final transcription, process for translation
           if (transcription.isFinal && savedTranscription) {
@@ -639,51 +691,155 @@ io.on('connection', (socket) => {
         }
       });
 
-      callback && callback(result);
+      console.log('✅ Voice recognition service started successfully:', result);
+      callback && callback({
+        success: true,
+        provider: result.provider,
+        streamId: result.streamId
+      });
 
-      console.log(`Voice recognition started for session ${sessionId}`);
+      console.log(`✅ Voice recognition started for session ${sessionId} with provider ${result.provider}`);
     } catch (error) {
-      console.error('Error starting voice recognition:', error);
+      console.error('❌ Error starting voice recognition:', error);
       callback && callback({ success: false, error: error.message });
     }
   });
 
-  // Handle audio chunk processing and storage
-  socket.on('audio_chunk', async (data) => {
+  // Handle real-time audio chunks from react-native-live-audio-stream
+  socket.on('realtime_audio_chunk', async (data) => {
+    try {
+      const client = connectedClients.get(socket.id);
+      if (!client || !client.isAuthenticated || client.userType !== 'mosque') {
+        console.warn('⚠️ Unauthorized realtime_audio_chunk request');
+        return;
+      }
+
+      const {
+        sessionId,
+        audioData,
+        sequence,
+        timestamp,
+        sampleRate,
+        channels,
+        format,
+        provider,
+        language
+      } = data;
+
+      console.log(`📤 Received real-time audio chunk #${sequence}: ${audioData.length} chars (base64), ${sampleRate}Hz, ${channels}ch for session: ${sessionId}`);
+
+      // Decode base64 audio data to buffer
+      const audioBuffer = Buffer.from(audioData, 'base64');
+      console.log(`🔄 Decoded audio buffer: ${audioBuffer.length} bytes`);
+
+      // Process with voice recognition service
+      if (VoiceRecognitionService.isSessionActive(sessionId)) {
+        try {
+          // Process the audio chunk for real-time transcription
+          const result = await VoiceRecognitionService.processRealTimeAudioChunk(
+            sessionId,
+            audioBuffer,
+            {
+              sequence,
+              timestamp,
+              sampleRate,
+              channels,
+              format: 'pcm',
+              provider: provider || 'munsit',
+              language: language || 'ar-SA'
+            }
+          );
+
+          if (result && result.transcription) {
+            console.log(`📝 Real-time transcription: "${result.transcription}"`);
+
+            // Broadcast transcription to all connected clients in this session
+            io.to(sessionId).emit('voice_transcription', {
+              sessionId,
+              text: result.transcription,
+              confidence: result.confidence,
+              isFinal: result.isFinal,
+              provider: result.provider,
+              timestamp: new Date(),
+              sequence
+            });
+
+            // If translation is enabled, translate the text
+            if (result.isFinal && result.transcription.trim()) {
+              try {
+                const translations = await MultiLanguageTranslationService.translateToMultipleLanguages(
+                  result.transcription,
+                  'ar', // Source language (Arabic)
+                  ['en', 'de', 'fr', 'es', 'tr'] // Target languages
+                );
+
+                // Broadcast translations
+                io.to(sessionId).emit('translation_update', {
+                  sessionId,
+                  originalText: result.transcription,
+                  translations,
+                  timestamp: new Date(),
+                  sequence
+                });
+
+                console.log(`🌐 Translations sent for sequence ${sequence}`);
+              } catch (translationError) {
+                console.error('❌ Translation error:', translationError);
+              }
+            }
+          }
+
+        } catch (processingError) {
+          console.error('❌ Error processing real-time audio chunk:', processingError);
+          socket.emit('voice_recognition_error', {
+            message: 'Real-time audio processing failed',
+            error: processingError.message,
+            sequence
+          });
+        }
+      } else {
+        console.warn(`⚠️ No active voice recognition session for ${sessionId}`);
+      }
+
+    } catch (error) {
+      console.error('❌ Error handling realtime_audio_chunk:', error);
+      socket.emit('voice_recognition_error', {
+        message: 'Real-time audio chunk processing failed',
+        error: error.message
+      });
+    }
+  });
+
+  // Handle real-time audio data (NEW APPROACH for real-time transcription)
+  socket.on('realtime_audio_data', async (data) => {
     try {
       const client = connectedClients.get(socket.id);
       if (!client || !client.isAuthenticated || client.userType !== 'mosque') {
         return;
       }
 
-      const { sessionId, audioData, format, mosque_id, isRealAudio } = data;
+      const { sessionId, timestamp, position, provider, format, isRealTime } = data;
+      console.log(`🎤 Real-time audio data received: position ${position}ms, session ${sessionId}`);
 
-      if (isRealAudio && audioData) {
-        console.log(`📤 Received real audio chunk: ${audioData.length} bytes for session: ${sessionId}`);
+      // Process real-time audio data through voice recognition
+      if (VoiceRecognitionService.isSessionActive(sessionId)) {
+        console.log('🎤 Processing real-time audio data for transcription...');
 
-        try {
-          // Store audio chunk in backend storage
-          await VoiceRecognitionService.writeAudioChunk(sessionId, audioData, {
-            format,
-            mosque_id,
-            timestamp: Date.now()
-          });
-          console.log(`✅ Audio chunk stored successfully`);
-
-          // Process audio chunk through voice recognition service
-          await VoiceRecognitionService.processAudioChunk(sessionId, audioData, format);
-          console.log(`✅ Audio chunk processed for voice recognition`);
-
-        } catch (chunkError) {
-          console.error('❌ Error processing audio chunk:', chunkError);
-        }
-      } else {
-        console.log(`⚠️ Received audio chunk without real audio data - isRealAudio: ${isRealAudio}, audioData length: ${audioData?.length || 0}`);
+        // TODO: Implement actual real-time audio capture and processing
+        // This would involve getting the audio buffer from the stream
+        // For now, we acknowledge the real-time data
       }
 
+      // Broadcast real-time audio status to connected users
+      socket.broadcast.emit('realtime_audio_status', {
+        sessionId,
+        position,
+        timestamp,
+        isActive: true
+      });
+
     } catch (error) {
-      console.error('Error processing audio chunk:', error);
-      socket.emit('voice_recognition_error', { message: 'Audio processing failed' });
+      console.error('Error handling real-time audio data:', error);
     }
   });
 
@@ -912,7 +1068,17 @@ io.on('connection', (socket) => {
 
       console.log('🎵 Received completed audio recording with data');
 
-      const { sessionId, audioData, provider, mosque_id, format, fileName, duration } = data;
+      const { sessionId, audioData, provider, mosque_id, format, fileName, duration, recordingType, sessionType, recordingTitle } = data;
+
+      console.log('📋 Recording details:', {
+        sessionId,
+        fileName,
+        recordingType,
+        sessionType,
+        format,
+        duration,
+        hasAudioData: !!audioData
+      });
 
       if (audioData && audioData.length > 0) {
         console.log(`📁 Saving complete audio file: ${audioData.length} bytes for session: ${sessionId}`);
@@ -949,6 +1115,8 @@ io.on('connection', (socket) => {
             format: format || 'm4a',
             fileName: fileName || `recording_${sessionId}_${Date.now()}.m4a`,
             duration: duration || 0,
+            recordingType: recordingType || sessionType || 'general',
+            sessionType: sessionType || recordingType || 'general',
             audioSessionId: null,         // We'll create this if needed
             deviceInfo: {
               platform: 'react-native',
@@ -1385,6 +1553,10 @@ app.get('/api/sessions/active', (req, res) => {
   res.json(activeSessonsArray);
 });
 
+
+
+
+
 // Server status endpoint
 app.get('/api/status', async (req, res) => {
   try {
@@ -1407,6 +1579,8 @@ app.get('/api/status', async (req, res) => {
         photoUpload: true,
         emailService: !!config.email.user,
         realTimeTranslation: true,
+        speechToText: true, // Munsit STT is available
+        translationProviders: MultiLanguageTranslationService.getAvailableProviders().length,
         databaseInitialized: dbStatus.isInitialized
       }
     });
@@ -1414,6 +1588,274 @@ app.get('/api/status', async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: 'Server status check failed',
+      error: error.message
+    });
+  }
+});
+
+// Translation Provider Management Endpoints
+
+// Get available translation providers
+app.get('/api/translation/providers', (req, res) => {
+  try {
+    const providers = MultiLanguageTranslationService.getAvailableProviders();
+    const stats = MultiLanguageTranslationService.getTranslationProviderStats();
+
+    res.json({
+      success: true,
+      data: {
+        providers,
+        stats,
+        totalProviders: providers.length,
+        availableProviders: providers.filter(p => p.isAvailable).length
+      }
+    });
+  } catch (error) {
+    console.error('Error getting translation providers:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Test all translation providers
+app.post('/api/translation/test', async (req, res) => {
+  try {
+    console.log('🧪 Testing all translation providers...');
+
+    const results = await MultiLanguageTranslationService.testTranslationProviders();
+
+    res.json({
+      success: true,
+      data: results,
+      message: 'Translation provider tests completed'
+    });
+  } catch (error) {
+    console.error('Error testing translation providers:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Test specific translation
+app.post('/api/translation/translate', async (req, res) => {
+  try {
+    const { text, targetLanguage, provider, sourceLanguage = 'ar' } = req.body;
+
+    if (!text || !targetLanguage) {
+      return res.status(400).json({
+        success: false,
+        error: 'Text and target language are required'
+      });
+    }
+
+    console.log(`🔄 Testing translation: ${text.substring(0, 50)}... (${sourceLanguage} → ${targetLanguage})`);
+
+    // Use the translation service
+    const result = await MultiLanguageTranslationService.translateWithCache(
+      text,
+      targetLanguage,
+      'religious',
+      provider || 'google'
+    );
+
+    res.json({
+      success: true,
+      data: result
+    });
+
+  } catch (error) {
+    console.error('Error in translation test:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Set default translation provider
+app.post('/api/translation/providers/default', (req, res) => {
+  try {
+    const { provider } = req.body;
+
+    if (!provider) {
+      return res.status(400).json({
+        success: false,
+        error: 'Provider name is required'
+      });
+    }
+
+    const success = MultiLanguageTranslationService.setDefaultTranslationProvider(provider);
+
+    if (success) {
+      res.json({
+        success: true,
+        message: `Default translation provider set to: ${provider}`
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: `Provider '${provider}' not available`
+      });
+    }
+  } catch (error) {
+    console.error('Error setting default provider:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// User Language Preferences Endpoints
+
+// Get user language preferences
+app.get('/api/user/language-preferences', async (req, res) => {
+  try {
+    const userId = req.user?.id || req.headers['x-user-id']; // Support both auth methods
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'User authentication required'
+      });
+    }
+
+    const preferences = await UserLanguagePreferencesService.getUserPreferences(userId);
+
+    res.json({
+      success: true,
+      data: {
+        preferences,
+        supportedLanguages: UserLanguagePreferencesService.getSupportedLanguages()
+      }
+    });
+  } catch (error) {
+    console.error('Error getting user language preferences:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Update user language preferences
+app.put('/api/user/language-preferences', async (req, res) => {
+  try {
+    const userId = req.user?.id || req.headers['x-user-id'];
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'User authentication required'
+      });
+    }
+
+    const updates = req.body;
+
+    // Validate preferences
+    const validation = UserLanguagePreferencesService.validatePreferences(updates);
+    if (!validation.isValid) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid preferences',
+        details: validation.errors
+      });
+    }
+
+    const preferences = await UserLanguagePreferencesService.updateUserPreferences(userId, updates);
+
+    res.json({
+      success: true,
+      data: preferences,
+      message: 'Language preferences updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating user language preferences:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Enable dual subtitles
+app.post('/api/user/dual-subtitles/enable', async (req, res) => {
+  try {
+    const userId = req.user?.id || req.headers['x-user-id'];
+    const { secondaryLanguage = 'en' } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'User authentication required'
+      });
+    }
+
+    const preferences = await UserLanguagePreferencesService.enableDualSubtitles(userId, secondaryLanguage);
+
+    res.json({
+      success: true,
+      data: preferences,
+      message: `Dual subtitles enabled: ${preferences.primaryLanguage} + ${secondaryLanguage}`
+    });
+  } catch (error) {
+    console.error('Error enabling dual subtitles:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Disable dual subtitles
+app.post('/api/user/dual-subtitles/disable', async (req, res) => {
+  try {
+    const userId = req.user?.id || req.headers['x-user-id'];
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'User authentication required'
+      });
+    }
+
+    const preferences = await UserLanguagePreferencesService.disableDualSubtitles(userId);
+
+    res.json({
+      success: true,
+      data: preferences,
+      message: 'Dual subtitles disabled'
+    });
+  } catch (error) {
+    console.error('Error disabling dual subtitles:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get supported languages
+app.get('/api/languages/supported', (req, res) => {
+  try {
+    const languages = UserLanguagePreferencesService.getSupportedLanguages();
+
+    res.json({
+      success: true,
+      data: {
+        languages,
+        defaultLanguage: 'de',
+        totalSupported: languages.length
+      }
+    });
+  } catch (error) {
+    console.error('Error getting supported languages:', error);
+    res.status(500).json({
+      success: false,
       error: error.message
     });
   }

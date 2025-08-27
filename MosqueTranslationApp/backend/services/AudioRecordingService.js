@@ -37,8 +37,8 @@ class AudioRecordingService {
         throw new Error('Maximum concurrent recordings reached');
       }
 
-      // Generate recording paths
-      const recordingPath = this.generateRecordingPath(sessionId, mosqueId);
+      // Generate recording paths with recording type support
+      const recordingPath = this.generateRecordingPath(sessionId, mosqueId, options);
       const fileName = path.basename(recordingPath);
       
       // Ensure directory exists
@@ -236,21 +236,41 @@ class AudioRecordingService {
     }
   }
 
-  generateRecordingPath(sessionId, mosqueId) {
+  generateRecordingPath(sessionId, mosqueId, options = {}) {
     const date = new Date();
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
-    const timestamp = date.getTime();
-    
-    return path.join(
+
+    // Generate filename based on recording type and date
+    let fileName;
+    if (options.recordingFileName) {
+      // Use custom filename if provided
+      fileName = options.recordingFileName;
+    } else {
+      // Generate filename with recording type - prioritize recordingType over sessionType
+      const dateStr = `${year}${month}${day}`; // YYYYMMDD format
+      const timeStr = date.toTimeString().slice(0, 8).replace(/:/g, ''); // HHMMSS format
+      const uniqueId = Math.random().toString(36).substring(2, 8); // 6 character unique ID
+
+      // Priority: recordingType > sessionType > 'general'
+      const recordingType = options.recordingType || options.sessionType || 'general';
+      const format = options.format || 'mp3';
+
+      // Format: {type}_{YYYYMMDD}_{HHMMSS}_{uniqueId}.{format}
+      fileName = `${recordingType}_${dateStr}_${timeStr}_${uniqueId}.${format}`;
+
+      console.log(`📁 Generated recording filename: ${fileName} (type: ${recordingType})`);
+    }
+
+    const fullPath = path.join(
       this.storageBasePath,
-      mosqueId.toString(),
-      year.toString(),
-      month,
-      day,
-      `${sessionId}_${timestamp}.mp3`
+      `mosque_${mosqueId.toString()}`,
+      fileName
     );
+
+    console.log(`📁 Full recording path: ${fullPath}`);
+    return fullPath;
   }
 
   async updateRecordingProgress(sessionId, progress) {
@@ -397,13 +417,28 @@ class AudioRecordingService {
   // Save complete audio file to backend storage
   async saveCompleteAudioFile(sessionId, audioFileData) {
     try {
-      const { audioBuffer, mosqueId, mosqueName, provider, format, fileName, duration, audioSessionId, deviceInfo } = audioFileData;
+      const { audioBuffer, mosqueId, mosqueName, provider, format, fileName, duration, audioSessionId, deviceInfo, recordingType, sessionType } = audioFileData;
 
-      // Generate file path
+      // Generate file path with proper recording type
       const mosqueDir = path.join(this.storageBasePath, `mosque_${mosqueId}`);
       await fs.promises.mkdir(mosqueDir, { recursive: true });
 
-      const filePath = path.join(mosqueDir, fileName);
+      // Generate proper filename if not provided or if it doesn't include recording type
+      let finalFileName = fileName;
+      if (!fileName || fileName.startsWith('recording_')) {
+        // Generate new filename with recording type
+        const date = new Date();
+        const dateStr = date.toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
+        const timeStr = date.toTimeString().slice(0, 8).replace(/:/g, ''); // HHMMSS
+        const uniqueId = Math.random().toString(36).substring(2, 8);
+        const type = recordingType || sessionType || 'general';
+        const ext = format || 'm4a';
+
+        finalFileName = `${type}_${dateStr}_${timeStr}_${uniqueId}.${ext}`;
+        console.log(`📁 Generated new filename with recording type: ${finalFileName}`);
+      }
+
+      const filePath = path.join(mosqueDir, finalFileName);
 
       // Convert audioBuffer to Buffer if it's an array
       let bufferToWrite;
@@ -451,7 +486,7 @@ class AudioRecordingService {
         audioSessionId: finalAudioSessionId,
         mosqueId,
         mosqueName,
-        fileName,
+        fileName: finalFileName, // Use the final filename with recording type
         filePath,
         fileSizeBytes: bufferToWrite.length,
         format: format || 'm4a',
@@ -461,7 +496,10 @@ class AudioRecordingService {
         metadata: {
           deviceInfo,
           uploadedAt: new Date(),
-          originalDuration: duration
+          originalDuration: duration,
+          sessionType: recordingType || sessionType || 'general',
+          recordingType: recordingType || sessionType || 'general',
+          title: `${recordingType || sessionType || 'General'} Recording - ${new Date().toLocaleString()}`
         }
       });
 
@@ -473,9 +511,10 @@ class AudioRecordingService {
 
       return {
         recordingId,
-        fileName,
+        fileName: finalFileName,
         filePath,
-        size: audioBuffer.length
+        size: audioBuffer.length,
+        recordingType: recordingType || sessionType || 'general'
       };
 
     } catch (error) {

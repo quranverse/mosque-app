@@ -80,6 +80,8 @@ class VoiceRecognitionService {
             format: 'mp3',
             quality: options.recordingQuality || 'standard',
             sessionType: options.sessionType,
+            recordingType: options.recordingType,
+            recordingFileName: options.recordingFileName,
             title: options.recordingTitle,
             description: options.recordingDescription
           });
@@ -126,44 +128,65 @@ class VoiceRecognitionService {
     }
   }
 
-  // Write audio chunk to backend storage
-  async writeAudioChunk(sessionId, audioChunk, metadata = {}) {
+  // REMOVED: Fake audio chunk storage
+
+
+
+  // Process real-time audio chunks from react-native-live-audio-stream
+  async processRealTimeAudioChunk(sessionId, audioBuffer, metadata = {}) {
     try {
+      console.log(`🎤 Processing real-time audio chunk for session ${sessionId}`);
+      console.log(`📊 Chunk info: ${audioBuffer.length} bytes, sequence: ${metadata.sequence}`);
+
       const streamInfo = this.activeStreams.get(sessionId);
       if (!streamInfo) {
-        console.warn(`No active stream for session ${sessionId}`);
-        return;
+        throw new Error(`No active stream found for session ${sessionId}`);
       }
 
-      // Write audio chunk to recording if enabled
-      if (streamInfo.recordingId) {
-        await AudioRecordingService.writeAudioChunk(sessionId, audioChunk, metadata);
+      // Get the configured provider
+      const provider = this.providers[streamInfo.provider];
+      if (!provider) {
+        throw new Error(`Provider ${streamInfo.provider} not available`);
       }
 
-      console.log(`📁 Audio chunk written for session ${sessionId}: ${audioChunk.length} bytes`);
+      // Process the audio chunk with the provider
+      const result = await provider.processAudioChunk(audioBuffer, streamInfo, metadata);
+
+      // Update stream statistics
+      streamInfo.chunksProcessed = (streamInfo.chunksProcessed || 0) + 1;
+      streamInfo.lastChunkTime = Date.now();
+
+      console.log(`✅ Processed chunk ${metadata.sequence} with ${streamInfo.provider}`);
+
+      return result;
 
     } catch (error) {
-      console.error('Error writing audio chunk:', error);
+      console.error('❌ Error processing real-time audio chunk:', error);
+      throw error;
     }
   }
 
-  // Process audio chunk (real-time streaming)
-  async processAudioChunk(sessionId, audioChunk, format = 'webm') {
-    const streamInfo = this.activeStreams.get(sessionId);
-    if (!streamInfo || !streamInfo.isActive) {
-      throw new Error('Voice recognition not active for this session');
-    }
+  // Enhanced audio chunk processing with better error handling
+  async processAudioChunk(sessionId, audioChunk, format = 'pcm', metadata = {}) {
+    console.log(`🎤 Processing audio chunk for session ${sessionId}, format: ${format}`);
 
     try {
-      // Process with voice recognition provider
+      const streamInfo = this.activeStreams.get(sessionId);
+      if (!streamInfo) {
+        throw new Error(`No active stream found for session ${sessionId}`);
+      }
+
       const provider = this.providers[streamInfo.provider];
-      await provider.processAudioChunk(audioChunk, streamInfo);
+      if (!provider) {
+        throw new Error(`Provider ${streamInfo.provider} not available`);
+      }
+
+      // Process with the provider
+      return await provider.processAudioChunk(audioChunk, streamInfo, metadata);
 
     } catch (error) {
-      console.error('Audio processing error:', error);
-
-      // Try fallback provider on error
-      await this.handleProviderError(sessionId, error);
+      console.error('❌ Error in processAudioChunk:', error);
+      throw error;
     }
   }
 
@@ -342,6 +365,8 @@ class VoiceRecognitionService {
       return null;
     }
   }
+
+
 
   // Get available providers and their status
   getProviderStatus() {
@@ -811,38 +836,50 @@ class MunsitProvider {
     });
   }
 
-  async processAudioChunk(audioChunk, streamInfo) {
+  async processAudioChunk(audioChunk, streamInfo, metadata = {}) {
     if (!this.socket || !this.isConnected) {
       console.warn('Munsit socket not connected, buffering audio chunk');
-      this.audioBuffer.push(audioChunk);
-      return;
+      this.audioBuffer.push({ chunk: audioChunk, metadata });
+      return null;
     }
 
     try {
       // Process buffered chunks first
       if (this.audioBuffer.length > 0) {
-        for (const bufferedChunk of this.audioBuffer) {
-          await this.sendAudioChunk(bufferedChunk);
+        console.log(`📤 Processing ${this.audioBuffer.length} buffered audio chunks`);
+        for (const bufferedItem of this.audioBuffer) {
+          await this.sendAudioChunk(bufferedItem.chunk, bufferedItem.metadata);
         }
         this.audioBuffer = [];
       }
 
       // Process current chunk
-      await this.sendAudioChunk(audioChunk);
+      await this.sendAudioChunk(audioChunk, metadata);
+
+      // Return a placeholder result - real transcription will come via socket events
+      return {
+        transcription: null, // Will be populated by socket events
+        confidence: null,
+        isFinal: false,
+        provider: 'munsit',
+        timestamp: new Date(),
+        sequence: metadata.sequence
+      };
 
     } catch (error) {
       console.error('Munsit audio processing error:', error);
       streamInfo.errorCallback?.(error);
+      throw error;
     }
   }
 
-  async sendAudioChunk(audioChunk) {
+  async sendAudioChunk(audioChunk, metadata = {}) {
     if (!audioChunk || !this.socket || !this.isConnected) {
       return;
     }
 
     try {
-      // Convert audio chunk to Uint8Array if needed
+      // Convert audio chunk to proper format for Munsit
       let audioBuffer;
       if (audioChunk instanceof ArrayBuffer) {
         audioBuffer = Array.from(new Uint8Array(audioChunk));
@@ -850,21 +887,39 @@ class MunsitProvider {
         audioBuffer = Array.from(audioChunk);
       } else if (Buffer.isBuffer(audioChunk)) {
         audioBuffer = Array.from(new Uint8Array(audioChunk));
+      } else if (Array.isArray(audioChunk)) {
+        audioBuffer = audioChunk;
       } else {
-        console.warn('Unsupported audio chunk format for Munsit');
+        console.warn('Unsupported audio chunk format for Munsit:', typeof audioChunk);
         return;
       }
 
-      // Send audio chunk to Munsit
-      this.socket.emit('audio_chunk', {
-        audioBuffer: audioBuffer
-      });
+      // Ensure we have valid audio data
+      if (!audioBuffer || audioBuffer.length === 0) {
+        console.warn('Empty audio buffer, skipping Munsit transmission');
+        return;
+      }
+
+      // Send audio chunk to Munsit with metadata
+      const payload = {
+        audioBuffer: audioBuffer,
+        timestamp: metadata.timestamp || Date.now(),
+        sequence: metadata.sequence || 0,
+        sampleRate: metadata.sampleRate || 44100,
+        channels: metadata.channels || 1,
+        format: metadata.format || 'm4a'
+      };
+
+      this.socket.emit('audio_chunk', payload);
+      console.log(`📤 Sent audio chunk to Munsit: ${audioBuffer.length} bytes, seq: ${payload.sequence}`);
 
     } catch (error) {
       console.error('Error sending audio chunk to Munsit:', error);
       throw error;
     }
   }
+
+
 
   async cleanup(streamInfo) {
     try {

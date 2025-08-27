@@ -206,6 +206,7 @@ const config = {
   // Voice Recognition APIs
   google: {
     speechApiKey: process.env.GOOGLE_SPEECH_API_KEY,
+    translateApiKey: process.env.GOOGLE_TRANSLATE_API_KEY,
     keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
     projectId: process.env.GOOGLE_PROJECT_ID
   },
@@ -252,6 +253,39 @@ const config = {
       connectionTimeout: 10000,
       enableWordTimestamps: true
     }
+  },
+
+  // Munsit Configuration (Speech-to-Text)
+  munsit: {
+    apiKey: process.env.MUNSIT_API_KEY || '',
+    socketUrl: process.env.MUNSIT_SOCKET_URL || 'https://api.cntxt.tools',
+    model: process.env.MUNSIT_MODEL || 'munsit-1',
+    voiceProvider: process.env.VOICE_PROVIDER || 'munsit',
+  },
+
+  // Translation Configuration
+  translation: {
+    defaultProvider: process.env.DEFAULT_TRANSLATION_PROVIDER || 'google',
+    defaultUserLanguage: process.env.DEFAULT_USER_LANGUAGE || 'de',
+    supportedLanguages: (process.env.SUPPORTED_LANGUAGES || 'de,en,fr,es,it,pt,ru,tr,ar').split(','),
+    enableDualSubtitles: process.env.ENABLE_DUAL_SUBTITLES !== 'false',
+    cacheTranslations: process.env.CACHE_TRANSLATIONS !== 'false'
+  },
+
+  // OpenAI Configuration (Translation Provider)
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || '',
+    model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
+    maxTokens: parseInt(process.env.OPENAI_MAX_TOKENS) || 1000,
+    temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 0.3, // Lower for consistent translations
+  },
+
+  // Azure Configuration (Translation Provider)
+  azure: {
+    subscriptionKey: process.env.AZURE_TRANSLATOR_KEY || '',
+    region: process.env.AZURE_TRANSLATOR_REGION || 'global',
+    speechKey: process.env.AZURE_SPEECH_KEY || '',
+    speechRegion: process.env.AZURE_SPEECH_REGION || 'eastus'
   }
 };
 

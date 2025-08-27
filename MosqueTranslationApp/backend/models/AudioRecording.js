@@ -156,7 +156,7 @@ const audioRecordingSchema = new mongoose.Schema({
     tags: [String],
     sessionType: {
       type: String,
-      enum: ['friday_prayer', 'daily_prayer', 'lecture', 'quran_recitation', 'general'],
+      enum: ['sermon', 'prayer', 'quran', 'lecture', 'talk', 'dua', 'general'],
       default: 'general'
     },
     language: {
